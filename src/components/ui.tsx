@@ -21,8 +21,10 @@ export function Icon({ name, size, style, className }: { name: IconName; size?: 
 }
 
 export function Logo({ name, height }: { name: 'homecoming' | 'gitam'; height: number }) {
-  const w = name === 'homecoming' ? 960 / 246 : 600 / 259
-  const alt = name === 'homecoming' ? 'Homecoming 2026 Visakhapatnam' : 'GITAM Deemed to be University'
+  // The Homecoming badge is a round seal with its own white face, so one picture works on light and dark screens.
+  if (name === 'homecoming') return <img className="logo" src="/logos/homecoming.png" height={height} width={height} alt="Homecoming 2026" />
+  const w = 600 / 259
+  const alt = 'GITAM Deemed to be University'
   return (
     <>
       <img className="logo logo-light" src={'/logos/' + name + '-teal.png'} height={height} width={Math.round(height * w)} alt={alt} />

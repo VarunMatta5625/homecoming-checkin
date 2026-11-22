@@ -96,7 +96,7 @@ function HomeScreenStep({ onDone }: { onDone: () => void }) {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
   return (
     <main className="screen notabs stack" style={{ alignItems: 'center', textAlign: 'center', padding: '48px 24px 0', gap: 10 }}>
-      <Logo name="homecoming" height={56} />
+      <Logo name="homecoming" height={88} />
       <h1 className="t-title" style={{ margin: '20px 0 0', fontSize: 26, lineHeight: '32px', fontWeight: 700 }}>Add to your Home Screen</h1>
       <p className="t-body muted" style={{ margin: 0 }}>It works offline and opens full-screen, like a normal app.{ios ? ' On iPhone this also keeps your guest list from being cleared.' : ''}</p>
       <div className="stack g3" style={{ width: '100%', marginTop: 16, textAlign: 'left' }}>
