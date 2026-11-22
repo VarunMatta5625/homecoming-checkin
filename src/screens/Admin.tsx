@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
 import type { AdminUser } from '../backend/types.ts'
-import { Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
+import { Alert, Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
 import { counterLabel } from '../lib/config.ts'
 import { fmtTime, initials, roleLabel } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
+import { prefs } from '../lib/prefs.ts'
 import type { Role } from '../lib/types.ts'
 
 export function Page({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
@@ -27,24 +28,34 @@ export function UsersScreen() {
   const [edit, setEdit] = useState<{ user: AdminUser; isNew: boolean } | null>(null)
   const load = () => void backend.listUsers().then(setUsers)
   useEffect(load, [])
+  const on = (users ?? []).filter((u) => u.active)
+  const off = (users ?? []).filter((u) => !u.active)
+  const row = (u: AdminUser) => (
+    <button key={u.email} type="button" className="rrow" onClick={() => setEdit({ user: u, isNew: false })}>
+      <span className="avatar" style={{ width: 40, height: 40 }}>{initials(u.name || u.email)}</span>
+      <div className="grow stack" style={{ gap: 2 }}>
+        <span className="nm">{u.name || u.email}</span>
+        <span className="meta ellipsis">{u.email}</span>
+      </div>
+      {!u.active && <Chip kind="neutral" icon="lock">Off</Chip>}
+      <Chip kind="tint">{roleLabel(u.role)}</Chip>
+      <Icon name="chev-r" size="s" className="chev" style={{ color: 'var(--text2)', opacity: 0.7 }} />
+    </button>
+  )
 
   return (
     <Page title="Users and roles" right={<button type="button" className="navbtn" onClick={() => setEdit({ user: BLANK, isNew: true })}>Add</button>}>
       {users && (
-        <Group header={users.length + ' people can sign in'} footer="People are added by email. They link up the first time they sign in with Google.">
-          {users.map((u) => (
-            <button key={u.email} type="button" className="rrow" onClick={() => setEdit({ user: u, isNew: false })}>
-              <span className="avatar" style={{ width: 40, height: 40 }}>{initials(u.name || u.email)}</span>
-              <div className="grow stack" style={{ gap: 2 }}>
-                <span className="nm">{u.name || u.email}</span>
-                <span className="meta ellipsis">{u.email}</span>
-              </div>
-              {!u.active && <Chip kind="neutral" icon="lock">Off</Chip>}
-              <Chip kind="tint">{roleLabel(u.role)}</Chip>
-              <Icon name="chev-r" size="s" className="chev" style={{ color: 'var(--text2)', opacity: 0.7 }} />
-            </button>
-          ))}
-        </Group>
+        <>
+          <Group header={on.length + ' people can sign in'} footer="People are added by email. They link up the first time they sign in with Google.">
+            {on.map(row)}
+          </Group>
+          {off.length > 0 && (
+            <Group header="Removed or switched off" style={{ marginTop: 20 }} footer="They cannot sign in. Their scans and edits stay in the records. Tap a person to switch them back on.">
+              {off.map(row)}
+            </Group>
+          )}
+        </>
       )}
       {edit && <EditUser init={edit} all={users ?? []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
     </Page>
@@ -56,15 +67,19 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
   const [error, setError] = useState<string | null>(null)
   const emailOk = /^\S+@\S+\.\S+$/.test(u.email.trim())
 
-  const save = async () => {
-    const email = u.email.trim().toLowerCase()
+  const [confirmRemove, setConfirmRemove] = useState(false)
+  const isMe = init.user.email.toLowerCase() === prefs.get().session?.email.toLowerCase()
+
+  const save = async (next: AdminUser = u) => {
+    const email = next.email.trim().toLowerCase()
     if (init.isNew && all.some((x) => x.email.toLowerCase() === email)) return setError('That email is already on the list.')
     const others = all.filter((x) => x.email.toLowerCase() !== email && x.active && x.role === 'admin')
-    if (!others.length && !(u.active && u.role === 'admin')) return setError('There must be at least one active admin.')
+    if (!others.length && !(next.active && next.role === 'admin')) return setError('There must be at least one active admin.')
     try {
-      await backend.saveUser({ ...u, email })
+      await backend.saveUser({ ...next, email })
       onSaved()
     } catch (e) {
+      setConfirmRemove(false)
       setError(e instanceof Error ? e.message : 'Couldn’t save. Check your signal and try again.')
     }
   }
@@ -81,7 +96,21 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
         <div className="cell"><span className="grow">Active</span><Switch on={u.active} onChange={(active) => setU({ ...u, active })} label="Active" /></div>
       </Group>
       {error && <div className="err-msg"><Icon name="alert" size="s" />{error}</div>}
-      <div className="px"><Btn disabled={!emailOk} onClick={() => void save()}>Save</Btn></div>
+      <div className="px stack g2">
+        <Btn disabled={!emailOk} onClick={() => void save()}>Save</Btn>
+        {!init.isNew && u.active && !isMe && <Btn kind="destructive" onClick={() => setConfirmRemove(true)}>Remove from the list</Btn>}
+      </div>
+      {confirmRemove && (
+        <Alert
+          title={'Remove ' + (init.user.name || init.user.email) + '?'}
+          body="They can no longer sign in, and any phone they are signed in on stops working. Their scans and edits stay in the records. You can switch them back on later."
+          onClose={() => setConfirmRemove(false)}
+          actions={[
+            { label: 'Cancel', onClick: () => setConfirmRemove(false) },
+            { label: 'Remove', kind: 'danger', onClick: () => void save({ ...init.user, active: false }) },
+          ]}
+        />
+      )}
     </Sheet>
   )
 }

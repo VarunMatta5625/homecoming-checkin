@@ -91,7 +91,7 @@ flowchart LR
 | **Activity** | Everything this phone did, grouped into "Waiting to sync" and synced, with Undo while the window is open |
 | **Stats** (staff) | Served, checked in, still to serve, needs review, per-counter totals with active/quiet chips |
 | **Needs review** (staff) | Over-served parties, served without entry, possible duplicates; correct with a mandatory reason |
-| **Users and roles** (admin) | Add people by email, set role, switch off. The last active admin cannot be removed |
+| **Users and roles** (admin) | Add people by email, set role, switch off, or remove. Removing switches the person off and moves them to a separate list, because their scans and edits must stay in the records. The last active admin cannot be removed, and you cannot remove yourself |
 | **Import guests** (admin) | Download a CSV template (and a PDF guide), check a filled file row by row, then Add to or Replace the guest list. Download the pass list (codes, QR tokens, contacts) for sending passes. Replace is refused once any scan exists or the event is live |
 | **Offline** | First run downloads the guest list. After that scans, search, register and undo all work with no signal |
 | **Demo mode** | No keys needed. 480 fake parties, demo sign-in chips and a "simulate a scan" panel for local development |
