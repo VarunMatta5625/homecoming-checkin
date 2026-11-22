@@ -34,11 +34,7 @@ export function CounterPicker({ initial, onDone, onClose }: { initial: string | 
     <Sheet
       title="Choose counter"
       onClose={onClose}
-    >
-      {sec('Gate', 'gate')}
-      {sec('Dinner counters', 'dinner')}
-      <div className="t-cap muted px5">Your counter is saved with every scan, so staff can trace it.</div>
-      <div className="px">
+      footer={
         <Btn
           disabled={!code}
           onClick={() => {
@@ -48,7 +44,11 @@ export function CounterPicker({ initial, onDone, onClose }: { initial: string | 
         >
           Done
         </Btn>
-      </div>
+      }
+    >
+      {sec('Gate', 'gate')}
+      {sec('Dinner counters', 'dinner')}
+      <div className="t-cap muted px5">Your counter is saved with every scan, so staff can trace it.</div>
     </Sheet>
   )
 }

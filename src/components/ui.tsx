@@ -123,12 +123,13 @@ export function Banner({ kind = 'warn', icon = 'wifi-off', title, children, acti
   )
 }
 
-export function Sheet({ title, onClose, children, action }: { title: string; onClose: () => void; children: ReactNode; action?: ReactNode }) {
+/** `footer` stays pinned under a scrolling body, so a long list never pushes the main button off screen. */
+export function Sheet({ title, onClose, children, action, footer }: { title: string; onClose: () => void; children: ReactNode; action?: ReactNode; footer?: ReactNode }) {
   useLayer(onClose)
   return (
     <Overlay>
       <div className="scrim" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={'sheet' + (footer ? ' has-foot' : '')} role="dialog" aria-modal="true" aria-label={title}>
         <div className="grab" />
         <div className="sheet-top">
           <span className="t-head">{title}</span>
@@ -139,7 +140,16 @@ export function Sheet({ title, onClose, children, action }: { title: string; onC
             </span>
           </button>
         </div>
-        <div className="sheet-body">{children}</div>
+        {footer ? (
+          <>
+            <div className="sheet-scroll">
+              <div className="sheet-body">{children}</div>
+            </div>
+            <div className="sheet-foot">{footer}</div>
+          </>
+        ) : (
+          <div className="sheet-body">{children}</div>
+        )}
       </div>
     </Overlay>
   )
