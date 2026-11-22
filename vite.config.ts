@@ -1,7 +1,21 @@
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+
+/** "1.0.0 (8c0729f)": shows in Account and in each phone's heartbeat, so staff can spot a phone on an old build. */
+function appVersion() {
+  const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
+  let sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7)
+  try {
+    sha ??= execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    /* not a git checkout */
+  }
+  return version + (sha ? ' (' + sha + ')' : '')
+}
 
 // `npm run dev:phone` serves over HTTPS on your LAN so a real phone can use the camera.
 export default defineConfig(({ mode }) => {
@@ -13,6 +27,7 @@ export default defineConfig(({ mode }) => {
     }
   }
   return {
+    define: { __APP_VERSION__: JSON.stringify(appVersion()) },
     plugins: [
       react(),
       mode === 'phone' && basicSsl(),

@@ -73,5 +73,5 @@ export interface PartyContact {
 
 export type PushResult = { id: string; status: 'accepted' | 'duplicate' } | { id: string; status: 'rejected'; reason: string }
 
-export const roleRank: Record<Role, number> = { volunteer: 0, staff: 1, admin: 2 }
+const roleRank: Record<Role, number> = { volunteer: 0, staff: 1, admin: 2 }
 export const hasRole = (s: Session | null, min: Role) => !!s && roleRank[s.role] >= roleRank[min]

@@ -3,7 +3,7 @@ export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? '').trim()
 export const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim()
 export const LIVE = !!SUPABASE_URL && !!SUPABASE_KEY && import.meta.env.VITE_DEMO !== 'true'
 export const DEMO = !LIVE
-export const APP_VERSION = '1.0.0 (1)'
+export const APP_VERSION = __APP_VERSION__
 export const EVENT_NAME = 'Homecoming 2026'
 /** Volunteer undo window. The server (push_batch) allows 120 s, so 60 s here is always accepted. */
 export const UNDO_WINDOW_S = 60

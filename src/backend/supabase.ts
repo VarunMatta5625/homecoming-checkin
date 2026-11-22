@@ -78,7 +78,7 @@ function fail(error: { message: string; code?: string; status?: number }): never
   throw new Error(error.message)
 }
 
-async function pull(from: Cursors, onPage?: (parties: number) => void): Promise<Snapshot> {
+async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Promise<Snapshot> {
   const parties: Party[] = []
   const events: ScanEvent[] = []
   const cur = { ...from }
@@ -133,11 +133,11 @@ export const supabaseBackend: Backend = {
     const { count } = await sb().from('parties').select('id', { count: 'exact', head: true })
     const total = count ?? 0
     onProgress(0, total)
-    return pull({ party: 0, event: 0 }, (n) => onProgress(Math.min(n, total), total))
+    return fetchPages({ party: 0, event: 0 }, (n) => onProgress(Math.min(n, total), total))
   },
 
   fetchChanges(from) {
-    return pull(from)
+    return fetchPages(from)
   },
 
   async pushBatch(items: OutboxItem[]): Promise<PushResult[]> {
@@ -157,7 +157,7 @@ export const supabaseBackend: Backend = {
   },
 
   async ping() {
-    if (prefs.get().demoOffline || !navigator.onLine) return false
+    if (!navigator.onLine) return false
     try {
       const res = await fetch(SUPABASE_URL + '/auth/v1/health', { headers: { apikey: SUPABASE_KEY }, cache: 'no-store', signal: AbortSignal.timeout(5000) })
       return res.ok

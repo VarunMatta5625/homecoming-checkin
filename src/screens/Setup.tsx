@@ -4,7 +4,7 @@ import { Btn, Empty, Icon, Logo } from '../components/ui.tsx'
 import { counterLabel } from '../lib/config.ts'
 import { downloadRoster } from '../lib/actions.ts'
 import { db } from '../lib/db.ts'
-import { fmtTime, plural } from '../lib/format.ts'
+import { fmtTime, plural, roleLabel } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -152,7 +152,7 @@ function ReadyStep() {
         <div className="cell"><span className="grow">Start in</span><span className="val">{counter?.startsWith('GATE') ? 'Entry' : counter ? 'Dinner' : '—'}</span></div>
       </div>
       <div style={{ flex: 1 }} />
-      <p className="t-cap muted center" style={{ margin: 0 }}>Signed in as {p.session?.name} · {p.session?.role[0]!.toUpperCase()}{p.session?.role.slice(1)}</p>
+      <p className="t-cap muted center" style={{ margin: 0 }}>Signed in as {p.session?.name} · {p.session && roleLabel(p.session.role)}</p>
       <div style={{ paddingBottom: 'max(env(safe-area-inset-bottom),16px)' }}>
         <Btn icon="scan" onClick={() => (counter ? applyCounter(counter) : setPicker(true))}>{counter ? 'Start scanning' : 'Choose your counter'}</Btn>
       </div>

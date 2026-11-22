@@ -19,6 +19,14 @@ export const initials = (name: string) =>
     .map((w) => w[0]!.toUpperCase())
     .join('')
 
+export const roleLabel = (role: string) => role[0]!.toUpperCase() + role.slice(1)
+
+/** The last 10 digits typed, so "+91 98765 43210" and "9876543210" are the same number. Anything shorter stays as typed. */
+export function mobileDigits(s: string) {
+  const d = s.replace(/\D/g, '')
+  return d.length > 10 ? d.slice(-10) : d
+}
+
 export const firstName = (name: string) => name.split(/\s+/)[0] ?? name
 export const plural = (n: number, one: string, many = one + 's') => n + ' ' + (n === 1 ? one : many)
 

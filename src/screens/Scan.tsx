@@ -28,8 +28,8 @@ export function ScanScreen() {
   const [torch, setTorch] = useState(false)
   const [flow, setFlow] = useState<Flow | null>(null)
   const [codeOpen, setCodeOpen] = useState(false)
-  const flowRef = useRef<Flow | null>(null)
-  flowRef.current = flow || codeOpen ? ({ kind: 'unrec' } as Flow) : null
+  const sheetOpen = useRef(false)
+  sheetOpen.current = !!flow || codeOpen
   const last = useRef<{ text: string; at: number }>({ text: '', at: 0 })
 
   const lookup = useCallback(async (text: string) => {
@@ -42,7 +42,7 @@ export function ScanScreen() {
   const onDecode = useCallback(
     (text: string) => {
       const t = Date.now()
-      if (flowRef.current) return
+      if (sheetOpen.current) return
       if (last.current.text === text && t - last.current.at < 2500) return
       last.current = { text, at: t }
       void lookup(text)

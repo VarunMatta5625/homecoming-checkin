@@ -4,9 +4,9 @@ import { Qr } from '../components/Qr.tsx'
 import { Screen } from '../components/layout.tsx'
 import { ActionSheet, Btn, Chip, Group, Icon, Seg, Sheet, Stepper, Banner } from '../components/ui.tsx'
 import { Wheel } from '../components/Wheel.tsx'
-import { MAX_BATCH_YEAR, MAX_CHILDREN, MIN_BATCH_YEAR, SCHOOLS } from '../lib/config.ts'
+import { EVENT_NAME, MAX_BATCH_YEAR, MAX_CHILDREN, MIN_BATCH_YEAR, SCHOOLS } from '../lib/config.ts'
 import { findPossibleDuplicate, registerOnSpot } from '../lib/actions.ts'
-import { firstName, fmtTime, parkingLabel, partyDesc } from '../lib/format.ts'
+import { firstName, fmtTime, mobileDigits, parkingLabel, partyDesc } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { qrPayload } from '../lib/ids.ts'
 import { leaveLayers } from '../lib/layers.ts'
@@ -31,7 +31,7 @@ type Errors = Partial<Record<'name' | 'mobile' | 'batchYear' | 'school' | 'cours
 function validate(f: Form): Errors {
   const e: Errors = {}
   if (f.name.trim().length < 2) e.name = 'Enter the alumnus’s full name'
-  if (f.mobile.replace(/\D/g, '').length !== 10) e.mobile = 'Mobile needs 10 digits'
+  if (mobileDigits(f.mobile).length !== 10) e.mobile = 'Mobile needs 10 digits'
   if (f.batchYear === null) e.batchYear = 'Choose a batch year (' + MIN_BATCH_YEAR + '–' + MAX_BATCH_YEAR + ')'
   if (!f.school) e.school = 'Choose a school'
   if (!f.course.trim()) e.course = 'Enter the course'
@@ -61,22 +61,25 @@ export function RegisterScreen() {
   const create = async (duplicateOf: string | null) => {
     if (busy) return
     setBusy(true)
-    const offline = !status.online
-    const { party, entry } = await registerOnSpot({
-      name: form.name,
-      mobile: form.mobile,
-      email: form.email,
-      batchYear: form.batchYear!,
-      school: form.school!,
-      course: form.course,
-      spouse: form.spouse,
-      children: form.children,
-      parking: form.parking,
-      duplicateOf,
-    })
-    setDup(null)
-    setBusy(false)
-    setPass({ party, at: entry.clientAt, offline })
+    try {
+      const offline = !status.online
+      const { party, entry } = await registerOnSpot({
+        name: form.name,
+        mobile: form.mobile,
+        email: form.email,
+        batchYear: form.batchYear!,
+        school: form.school!,
+        course: form.course,
+        spouse: form.spouse,
+        children: form.children,
+        parking: form.parking,
+        duplicateOf,
+      })
+      setDup(null)
+      setPass({ party, at: entry.clientAt, offline })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const submit = async () => {
@@ -154,7 +157,7 @@ export function RegisterScreen() {
           </div>
         </Group>
 
-        <Group header="Parking" style={{ marginTop: 20 }} footer={'Party of ' + size + (form.spouse === 'maybe' ? ' (spouse: Maybe)' : '') + '. One QR for everyone.' + (form.mobile.replace(/\D/g, '').length === 10 ? ' The pass is sent to +91 ' + form.mobile.replace(/\D/g, '').slice(-10).replace(/(\d{5})(\d{5})/, '$1 $2') + ' by SMS.' : '')}>
+        <Group header="Parking" style={{ marginTop: 20 }} footer={'Party of ' + size + (form.spouse === 'maybe' ? ' (spouse: Maybe)' : '') + '. One QR for everyone.' + (mobileDigits(form.mobile).length === 10 ? ' The pass is sent to +91 ' + mobileDigits(form.mobile).replace(/(\d{5})(\d{5})/, '$1 $2') + ' by SMS.' : '')}>
           <div className="cell" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
             <Seg label="Parking" value={form.parking} onChange={(v) => set('parking', v)} options={[{ value: 'none', label: 'None' }, { value: 'two_wheeler', label: '2-wheeler' }, { value: 'four_wheeler', label: '4-wheeler' }]} />
           </div>
@@ -226,9 +229,9 @@ function PassView({ party, at, offline, onAgain }: { party: Party; at: number; o
   }, [copied])
 
   const share = async () => {
-    const text = 'Homecoming 2026 pass for ' + party.leadName + '. Pass code ' + party.passCode
+    const text = EVENT_NAME + ' pass for ' + party.leadName + '. Pass code ' + party.passCode
     try {
-      if (navigator.share) await navigator.share({ title: 'Homecoming 2026 pass', text })
+      if (navigator.share) await navigator.share({ title: EVENT_NAME + ' pass', text })
       else {
         await navigator.clipboard.writeText(text)
         setCopied(true)
