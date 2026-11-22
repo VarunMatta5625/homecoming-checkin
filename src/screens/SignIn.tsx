@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
 import type { SignInResult } from '../backend/types.ts'
 import { Btn, Chip, Icon, Logo } from '../components/ui.tsx'
@@ -96,6 +97,9 @@ export function SignInScreen() {
         <Logo name="gitam" height={32} />
       </div>
       <Chip kind="outline" icon="wifi-off">Works offline once your phone is set up</Chip>
+      <Link to="/privacy" className="t-cap muted" style={{ padding: '8px 0 4px' }}>
+        Privacy policy
+      </Link>
     </main>
   )
 }
