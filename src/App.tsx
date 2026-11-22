@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AccountSheet } from './components/AccountSheet.tsx'
 import { TabBar } from './components/layout.tsx'
 import { Sprite } from './components/ui.tsx'
@@ -11,6 +11,7 @@ import { ActivityScreen } from './screens/Activity.tsx'
 import { ScanScreen } from './screens/Scan.tsx'
 import { SearchScreen } from './screens/Search.tsx'
 import { SetupScreen } from './screens/Setup.tsx'
+import { PrivacyScreen } from './screens/Privacy.tsx'
 import { SignInScreen } from './screens/SignIn.tsx'
 
 // Screens people open less often load on demand. The service worker precaches every chunk, so they still work offline.
@@ -23,11 +24,13 @@ const StatsScreen = lazy(() => import('./screens/Stats.tsx').then((m) => ({ defa
 
 export default function App() {
   const p = prefs.use()
+  const { pathname } = useLocation()
   useEffect(() => startSync(), [])
   return (
     <div className="gh app">
       <Sprite />
-      {!p.session ? <SignInScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
+      {/* The privacy policy is public: Google and guests open it without signing in. */}
+      {pathname === '/privacy' ? <PrivacyScreen /> : !p.session ? <SignInScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
     </div>
   )
 }
