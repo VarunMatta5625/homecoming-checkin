@@ -1,0 +1,20 @@
+- main [ref=e4]:
+  - img "Homecoming 2026" [ref=e5]
+  - heading "Welcome, volunteers" [level=1] [ref=e6]
+  - paragraph [ref=e7]: Check guests in at the gate and serve dinner, even when the signal drops.
+  - generic [ref=e8]:
+    - button "G Continue with Google" [ref=e9] [cursor=pointer]:
+      - generic [ref=e10]: G
+      - text: Continue with Google
+    - generic [ref=e11]: Use your GITAM college account
+  - generic [ref=e12]:
+    - generic [ref=e13]: DEMO · sign in as
+    - generic [ref=e14]:
+      - button "Volunteer" [ref=e15] [cursor=pointer]
+      - button "Staff" [ref=e16] [cursor=pointer]
+      - button "Admin" [ref=e17] [cursor=pointer]
+      - button "Not on the list" [ref=e18] [cursor=pointer]
+  - img "GITAM Deemed to be University" [ref=e20]
+  - generic [ref=e21]: Works offline once your phone is set up
+  - link "Privacy policy" [ref=e24] [cursor=pointer]:
+    - /url: /privacy
