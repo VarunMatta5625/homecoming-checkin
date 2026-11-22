@@ -1,17 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { counterLabel } from '../lib/config.ts'
-import { ago, firstName, fmtTime, partyDesc, plural, vibrate } from '../lib/format.ts'
+import { UNDO_WINDOW_S, counterLabel } from '../lib/config.ts'
+import { ago, firstName, fmtTime, mmss, partyDesc, plural, vibrate } from '../lib/format.ts'
 import { checkIn, serveDinner, shortName } from '../lib/actions.ts'
 import { usePartyView, useNow } from '../lib/hooks.ts'
 import { leaveLayers } from '../lib/layers.ts'
 import { prefs } from '../lib/prefs.ts'
 import { liveEvents } from '../lib/state.ts'
 import { ui } from '../lib/ui.ts'
-import { UNDO_WINDOW_S } from '../lib/config.ts'
 import { undoSecondsLeft } from '../lib/undo.ts'
 import { hasRole, type Method, type ScanEvent } from '../lib/types.ts'
-import { mmss } from '../lib/format.ts'
 import { Btn, Chip, Kv, PartyCounter, ResultHead, Sheet, Stepper } from './ui.tsx'
 import { UndoSheet } from './UndoSheet.tsx'
 
@@ -25,8 +23,7 @@ const BUZZ: Partial<Record<Kind, 'ok' | 'warn' | 'bad'>> = { valid: 'ok', entry:
 /** The scan result sheet. One Sheet instance for every state, so it never re-animates or re-pushes history. */
 export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; mode: 'entry' | 'dinner'; onClose: () => void; onEnterCode?: () => void }) {
   const navigate = useNavigate()
-  const session = prefs.use().session
-  const rosterAt = prefs.use().rosterAt
+  const { session, rosterAt } = prefs.use()
   const view = usePartyView(flow.kind === 'guest' ? flow.partyId : null)
   const [userN, setUserN] = useState<number | null>(null)
   const [entryN, setEntryN] = useState<number | null>(null)
@@ -61,21 +58,27 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
   const doServe = async () => {
     if (!party || !state || busy) return
     setBusy(true)
-    const event = await serveDinner(party.id, n, flow.kind === 'guest' ? flow.method : 'search')
-    ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Served ' + n + ' · ' + shortName(party.leadName), sub: state.served + n + ' of ' + state.entitled + ' served', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
-    setDone({ event, qty: n })
-    setBusy(false)
+    try {
+      const event = await serveDinner(party.id, n, flow.kind === 'guest' ? flow.method : 'search')
+      ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Served ' + n + ' · ' + shortName(party.leadName), sub: state.served + n + ' of ' + state.entitled + ' served', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
+      setDone({ event, qty: n })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const doCheckIn = async (qty: number) => {
     if (!party || !state || busy) return
     setBusy(true)
-    const event = await checkIn(party.id, qty, flow.kind === 'guest' ? flow.method : 'search')
-    if (mode === 'entry') {
-      ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Welcome back, ' + firstName(party.leadName) + '!', sub: (qty === party.partySize ? 'Party of ' + qty : plural(qty, 'person', 'people')) + ' checked in', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
-      onClose()
+    try {
+      const event = await checkIn(party.id, qty, flow.kind === 'guest' ? flow.method : 'search')
+      if (mode === 'entry') {
+        ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Welcome back, ' + firstName(party.leadName) + '!', sub: (qty === party.partySize ? 'Party of ' + qty : plural(qty, 'person', 'people')) + ' checked in', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
+        onClose()
+      }
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   const guest = party && state && (
@@ -91,8 +94,10 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
     </div>
   )
 
-  const lastDinner = view ? liveEvents(view.events).filter((e) => e.checkpoint === 'dinner').sort((a, b) => b.clientAt - a.clientAt) : []
-  const entryEvent = view ? liveEvents(view.events).filter((e) => e.checkpoint === 'entry').sort((a, b) => a.clientAt - b.clientAt)[0] : undefined
+  const live = view ? liveEvents(view.events).sort((a, b) => a.clientAt - b.clientAt) : []
+  const dinnerEvents = live.filter((e) => e.checkpoint === 'dinner')
+  const lastDinner = dinnerEvents[dinnerEvents.length - 1]
+  const entryEvent = live.find((e) => e.checkpoint === 'entry')
 
   const details = party && kind !== 'done' && (
     <button type="button" className="navbtn" onClick={() => go('/guest/' + party.id)}>
@@ -149,9 +154,9 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
           <ResultHead kind="bad" icon="x-circle" label="Already served" sub={'All ' + state.entitled + ' meals for this party'} />
           {guest}
           <div className="group">
-            <Kv k="When" v={lastDinner[0] ? fmtTime(lastDinner[0].clientAt) + ' · ' + ago(lastDinner[0].clientAt, now) : '—'} />
-            <Kv k="Where" v={lastDinner[0] ? counterLabel(lastDinner[0].counter) : '—'} />
-            <Kv k="Served by" v={lastDinner[0]?.actorName ?? '—'} />
+            <Kv k="When" v={lastDinner ? fmtTime(lastDinner.clientAt) + ' · ' + ago(lastDinner.clientAt, now) : '—'} />
+            <Kv k="Where" v={lastDinner ? counterLabel(lastDinner.counter) : '—'} />
+            <Kv k="Served by" v={lastDinner?.actorName ?? '—'} />
             <Kv k="Party" v={state.served + ' of ' + state.entitled + ' served'} />
           </div>
           <p className="t-sub muted px5" style={{ margin: 0 }}>If someone in the party missed their meal, ask a staff member to check.</p>
@@ -166,15 +171,12 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
           <ResultHead kind="warn" icon="flag" label="Heads-up" sub={'Flagged after sync · ' + plural(state.served - state.entitled, 'meal') + ' more than the party size'} />
           {guest}
           <div className="group">
-            {lastDinner
-              .slice()
-              .reverse()
-              .map((e) => (
-                <div key={e.id} className="kv">
-                  <span>{fmtTime(e.clientAt)} · {counterLabel(e.counter)}</span>
-                  <span style={{ textAlign: 'right' }}>{e.actorId === session?.actorId ? 'You' : e.actorName} · served {e.qty}</span>
-                </div>
-              ))}
+            {dinnerEvents.map((e) => (
+              <div key={e.id} className="kv">
+                <span>{fmtTime(e.clientAt)} · {counterLabel(e.counter)}</span>
+                <span style={{ textAlign: 'right' }}>{e.actorId === session?.actorId ? 'You' : e.actorName} · served {e.qty}</span>
+              </div>
+            ))}
           </div>
           <p className="t-sub muted px5" style={{ margin: 0 }}>More than one counter served this party. Staff have been told and will sort it out. Nothing to do here.</p>
           <div className="px">

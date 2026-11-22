@@ -64,7 +64,7 @@ export function ActivityScreen() {
         </div>
         {errFor(e.id) && <Chip kind="warn" icon="alert">Not sent</Chip>}
         {st === 'open' && (
-          <Btn sm auto kind={!staff && left === UNDO_WINDOW_S ? 'primary' : 'primary'} icon="undo" onClick={() => setUndoEvt(e)}>
+          <Btn sm auto icon="undo" onClick={() => setUndoEvt(e)}>
             {staff ? 'Undo' : 'Undo ' + mmss(left)}
           </Btn>
         )}

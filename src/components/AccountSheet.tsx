@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_VERSION, COUNTERS, DEMO, counterLabel } from '../lib/config.ts'
 import { resetDemoData, signOutAndWipe } from '../lib/actions.ts'
-import { fmtTime, initials, ago } from '../lib/format.ts'
+import { ago, fmtTime, initials, roleLabel } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { leaveLayers } from '../lib/layers.ts'
 import { applyAppearance, prefs } from '../lib/prefs.ts'
@@ -79,7 +79,7 @@ export function AccountSheet() {
             <span className="t-head">{s.name}</span>
             <span className="t-sub muted ellipsis">{s.email}</span>
           </div>
-          <Chip kind="tint" icon="shield">{s.role[0]!.toUpperCase() + s.role.slice(1)}</Chip>
+          <Chip kind="tint" icon="shield">{roleLabel(s.role)}</Chip>
         </div>
 
         <Group>

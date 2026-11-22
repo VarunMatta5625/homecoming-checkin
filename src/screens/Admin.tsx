@@ -4,7 +4,7 @@ import { backend } from '../backend/index.ts'
 import type { AdminUser } from '../backend/types.ts'
 import { Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
 import { counterLabel } from '../lib/config.ts'
-import { fmtTime, initials } from '../lib/format.ts'
+import { fmtTime, initials, roleLabel } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
 import type { Role } from '../lib/types.ts'
 
@@ -12,7 +12,6 @@ function Page({ title, right, children }: { title: string; right?: React.ReactNo
   const navigate = useNavigate()
   return (
     <main className="screen" style={{ paddingTop: 0 }}>
-      <div style={{ height: 'max(env(safe-area-inset-top),8px)', background: 'var(--bar)' }} />
       <NavBar back="Back" onBack={() => (history.length > 1 ? navigate(-1) : navigate('/scan', { replace: true }))} title={title} right={right} />
       <div style={{ height: 16 }} />
       {children}
@@ -41,7 +40,7 @@ export function UsersScreen() {
                 <span className="meta ellipsis">{u.email}</span>
               </div>
               {!u.active && <Chip kind="neutral" icon="lock">Off</Chip>}
-              <Chip kind="tint">{u.role[0]!.toUpperCase() + u.role.slice(1)}</Chip>
+              <Chip kind="tint">{roleLabel(u.role)}</Chip>
               <Icon name="chev-r" size="s" className="chev" style={{ color: 'var(--text2)', opacity: 0.7 }} />
             </button>
           ))}

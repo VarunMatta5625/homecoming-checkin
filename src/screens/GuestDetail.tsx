@@ -42,7 +42,6 @@ export function GuestDetailScreen() {
   if (view === null)
     return (
       <main className="screen" style={{ paddingTop: 0 }}>
-        <div style={{ height: 'max(env(safe-area-inset-top),8px)', background: 'var(--bar)' }} />
         <NavBar back="Back" onBack={back} title="Guest" />
         <Empty icon="help" title="Guest not found" body="This guest isn’t on this phone yet. It may still be syncing." />
       </main>
@@ -55,7 +54,6 @@ export function GuestDetailScreen() {
 
   return (
     <main className="screen" style={{ paddingTop: 0 }}>
-      <div style={{ height: 'max(env(safe-area-inset-top),8px)', background: 'var(--bar)' }} />
       <NavBar back="Back" onBack={back} title="Guest" />
       <div className="stack" style={{ padding: '16px 20px 14px', gap: 4 }}>
         <h1 className="gname">{party.leadName}</h1>

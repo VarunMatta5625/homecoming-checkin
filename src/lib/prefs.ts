@@ -2,7 +2,6 @@ import { newId } from './ids.ts'
 import { createStore } from './store.ts'
 import type { Session } from './types.ts'
 
-
 export interface Prefs {
   deviceId: string
   /** Counter code, e.g. DINNER-4 or GATE-2. Saved with every scan. */
@@ -46,9 +45,9 @@ const defaults: Prefs = {
 
 export const prefs = createStore<Prefs>(defaults, 'gh26.prefs')
 
-// make sure a valid (uuid) device id is persisted on first run
+// Persist the device id on first run, and replace an old one that is not a UUID (the database needs a real UUID).
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-if (!localStorage.getItem('gh26.prefs') || !UUID.test(prefs.get().deviceId)) prefs.set({ deviceId: UUID.test(prefs.get().deviceId) ? prefs.get().deviceId : newId() })
+prefs.set({ deviceId: UUID.test(prefs.get().deviceId) ? prefs.get().deviceId : newId() })
 
 export function applyAppearance() {
   const p = prefs.get()

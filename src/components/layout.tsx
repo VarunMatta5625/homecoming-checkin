@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
 import { counterLabel } from '../lib/config.ts'
-import { pendingCount, switchAccount } from '../lib/actions.ts'
+import { pendingCount, startOver } from '../lib/actions.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { ui } from '../lib/ui.ts'
@@ -56,7 +56,7 @@ async function resumeSession(r: SignInResult): Promise<string | null> {
   if (r.session.actorId !== prefs.get().session?.actorId) {
     // Unsynced changes belong to the old account. With none, the new person simply takes over this phone.
     if ((await pendingCount()) === 0) {
-      await switchAccount(r.session)
+      await startOver(r.session)
       return null
     }
     return 'Sign in with ' + (prefs.get().session?.email ?? 'the same account') + ' to keep your saved changes.'

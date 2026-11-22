@@ -41,7 +41,7 @@ export function StatsScreen() {
   }, [roster])
 
   if (!s) return <Screen title="Stats"><span /></Screen>
-  const rows = COUNTERS.filter((c) => c.kind === (view === 'dinner' ? 'dinner' : 'gate')).map((c) => ({ c, d: s.per.get((view === 'dinner' ? 'dinner' : 'entry') + c.code) }))
+  const rows = COUNTERS.filter((c) => c.kind === (view === 'dinner' ? 'dinner' : 'gate')).map((c) => ({ c, d: s.per.get(view + c.code) }))
   const shown = all ? rows : rows.slice(0, 4)
   const max = Math.max(1, ...rows.map((r) => r.d?.n ?? 0))
   const active = rows.filter((r) => r.d && now - r.d.at < 10 * 60000).length

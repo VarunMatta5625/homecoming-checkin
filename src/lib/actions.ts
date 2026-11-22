@@ -1,9 +1,11 @@
 import { backend } from '../backend/index.ts'
 import { db, clearLocalData, finishWipe } from './db.ts'
+import { mobileDigits } from './format.ts'
 import { newId, newPassCode, newQrToken } from './ids.ts'
 import { prefs } from './prefs.ts'
 import { kickSync, net, nextStamp } from './sync.ts'
 import type { Checkpoint, Method, Parking, Party, PartyContact, ScanEvent, Session, Ynm } from './types.ts'
+import { liveEvents } from './state.ts'
 import { hasRole } from './types.ts'
 
 /** "Rahul Teja" -> "Rahul T." */
@@ -55,9 +57,7 @@ export async function resetCheckpoints(partyId: string, checkpoints: Checkpoint[
   const s = prefs.get().session
   if (!hasRole(s, 'staff')) throw new Error('Only staff can correct records')
   if (!reason.trim()) throw new Error('A reason is required')
-  const events = await db.events.where('partyId').equals(partyId).toArray()
-  const voided = new Set(events.filter((e) => e.action === 'void').map((e) => e.voidsEventId))
-  const live = events.filter((e) => e.action === 'pass' && checkpoints.includes(e.checkpoint) && !voided.has(e.id))
+  const live = liveEvents(await db.events.where('partyId').equals(partyId).toArray()).filter((e) => checkpoints.includes(e.checkpoint))
   if (!live.length) return
   await commit(live.map((o) => build({ partyId, checkpoint: o.checkpoint, action: 'void', qty: 0, voidsEventId: o.id, reason, method: 'staff' })))
 }
@@ -85,6 +85,9 @@ async function uniquePassCode() {
 /** On-spot guest: id, qr token and pass code are made here so the QR shows instantly, offline too. */
 export async function registerOnSpot(input: RegisterInput) {
   const name = input.name.trim().replace(/\s+/g, ' ')
+  const mobile = mobileDigits(input.mobile)
+  // "B.Tech, Mechanical" is the course and the department, the same split the imported guest list uses.
+  const [course = '', department = ''] = input.course.split(',').map((s) => s.trim())
   const party: Party = {
     id: newId(),
     passCode: await uniquePassCode(),
@@ -94,9 +97,9 @@ export async function registerOnSpot(input: RegisterInput) {
     nameLc: name.toLowerCase(),
     batchYear: input.batchYear,
     school: input.school,
-    department: input.course.includes(',') ? (input.course.split(',')[1] ?? '').trim() : input.course,
-    course: input.course.trim(),
-    mobileLast4: input.mobile.replace(/\D/g, '').slice(-4),
+    department: department || null,
+    course,
+    mobileLast4: mobile.slice(-4),
     spouse: input.spouse,
     children: input.children,
     partySize: 1 + (input.spouse === 'no' ? 0 : 1) + input.children,
@@ -105,7 +108,7 @@ export async function registerOnSpot(input: RegisterInput) {
     possibleDuplicateOf: input.duplicateOf,
     deletedAt: null,
   }
-  const contact: PartyContact = { mobile: '+91' + input.mobile.replace(/\D/g, '').slice(-10), email: input.email.trim() || null }
+  const contact: PartyContact = { mobile: '+91' + mobile, email: input.email.trim() || null }
   const entry = build({ partyId: party.id, checkpoint: 'entry', action: 'pass', qty: party.partySize, method: 'search' })
   await commit([entry], { party, contact })
   return { party, entry }
@@ -113,7 +116,7 @@ export async function registerOnSpot(input: RegisterInput) {
 
 /** Same last 4 digits and the same batch or a shared name. Server does the real match on the full mobile. */
 export async function findPossibleDuplicate(mobile: string, name: string, batchYear: number) {
-  const last4 = mobile.replace(/\D/g, '').slice(-4)
+  const last4 = mobileDigits(mobile).slice(-4)
   if (last4.length < 4) return null
   const tokens = name.toLowerCase().split(/\s+/).filter((t) => t.length > 2)
   const hits = await db.parties.filter((p) => p.mobileLast4 === last4 && (p.batchYear === batchYear || tokens.some((t) => p.nameLc.includes(t)))).toArray()
@@ -140,10 +143,11 @@ export async function signOutAndWipe() {
   await startOver(null)
 }
 
-/** A different person signed in and nothing is waiting to sync: this phone becomes theirs, with a clean local copy (they pick a counter and download the roster again). */
-export const switchAccount = (session: Session) => startOver(session)
-
-/** Leave the app first; the wipe can't hold the UI hostage if the local database is busy. */
+/**
+ * Replace this phone's local copy. With `null` the person signed out; with a session, a different person signed in while
+ * nothing was waiting to sync, so the phone becomes theirs (they pick a counter and download the roster again).
+ * Leaves the app first; the wipe can't hold the UI hostage if the local database is busy.
+ */
 export async function startOver(session: Session | null) {
   prefs.set({ session, sessionExpired: false, counter: null, rosterAt: null, lastSyncAt: null, wipePending: true, partyCursor: 0, eventCursor: 0 })
   await finishWipe()

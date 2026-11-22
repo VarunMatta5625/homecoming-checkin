@@ -24,9 +24,12 @@ export function CorrectionSheet({ partyId, onClose, onOpenGuest }: { partyId: st
   const apply = async () => {
     if (!reason || busy) return
     setBusy(true)
-    await resetCheckpoints(party.id, kind === 'dinner' ? ['dinner'] : both ? ['entry', 'dinner'] : ['entry'], reason)
-    setSaved({ now: kind === 'dinner' ? '0 of ' + state.entitled + ' served' : 'Not checked in', reason, what: kind === 'dinner' ? 'dinner reset' : both ? 'entry and dinner reset' : 'entry reset', at: Date.now() })
-    setBusy(false)
+    try {
+      await resetCheckpoints(party.id, kind === 'dinner' ? ['dinner'] : both ? ['entry', 'dinner'] : ['entry'], reason)
+      setSaved({ now: kind === 'dinner' ? '0 of ' + state.entitled + ' served' : 'Not checked in', reason, what: kind === 'dinner' ? 'dinner reset' : both ? 'entry and dinner reset' : 'entry reset', at: Date.now() })
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (saved)

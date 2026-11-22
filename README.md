@@ -35,7 +35,7 @@ Copy `.env.example` to `.env.local` and fill in the two Supabase values. With no
 
 ## Database
 
-Schema, row-level security and RPCs are in `supabase/`. Setup, role mapping and the 47 acceptance checks (`supabase/test/harness.sh`, needs Docker) are in `supabase/README.md`. Tests must pass before changing sync, derived state or RLS.
+Schema, row-level security and RPCs are in `supabase/`. Setup, role mapping and the 54 acceptance checks (`supabase/test/harness.sh`, needs Docker) are in `supabase/README.md`. Tests must pass before changing sync, derived state or RLS.
 
 ## Backend seam
 

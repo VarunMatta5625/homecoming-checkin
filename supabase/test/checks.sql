@@ -20,10 +20,12 @@ create function _ev(pid uuid, cp text, qty int, who uuid, dev uuid, ago_s int de
     'counter', case cp when 'entry' then 'GATE-1' else 'DINNER-1' end, 'deviceId', dev,
     'clientAt', ((extract(epoch from now()) - ago_s) * 1000)::bigint) || extra) $$;
 
+grant execute on function _as(text), _back(), _try(text), _ok(boolean, text), _ev(uuid, text, int, uuid, uuid, int, jsonb) to authenticated;
+
 do $t$
 declare
   pa uuid; pb uuid; pc uuid; d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid();
-  it jsonb; r jsonb; ent int; n int; v1 uuid; err text; ev jsonb; evid text;
+  it jsonb; r jsonb; ent int; n int; v1 uuid; err text; ev jsonb; ev3 jsonb; evid text;
 begin
   insert into auth.users (email, email_confirmed_at) values
     ('admin@homecoming.test', now()), ('staff@homecoming.test', now()), ('volunteer1@homecoming.test', now()),
@@ -54,7 +56,8 @@ begin
   -- Volunteer cannot reach staff/admin things
   perform _as('volunteer1@homecoming.test');
   perform _ok((select count(*) from parties) = 120, 'volunteer reads the roster');
-  perform _ok((select count(*) from party_contacts) = 0, 'volunteer cannot read party_contacts');
+  perform _ok(_try('select count(*) from party_contacts') like 'permission denied%', 'volunteer cannot read party_contacts');
+  perform _ok(_try('select notes from parties') like 'permission denied%', 'volunteer cannot read parties.notes');
   perform _ok(_try('select get_party_contact(''' || pa || ''')') is not null, 'volunteer cannot call get_party_contact');
   perform _ok(_try('select resolve_review(''' || pa || ''', ''x'')') is not null, 'volunteer cannot resolve a review');
   perform _ok(_try('select admin_set_user(''a@b.co'', ''A'', ''admin'', true)') is not null, 'volunteer cannot call admin_set_user');
@@ -111,6 +114,20 @@ begin
   perform _as('staff@homecoming.test');
   r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'Guest left', 'method', 'staff'))));
   perform _ok(r->0->>'status' = 'accepted', 'staff can undo any scan, any time');
+  perform _ok(_try('select mobile from party_contacts') like 'permission denied%', 'staff cannot read party_contacts directly (only through the audited function)');
+  perform _ok(_try('select notes from parties') like 'permission denied%', 'staff cannot read parties.notes directly');
+  perform _back();
+
+  -- A void must target a plain scan of the same guest
+  perform _as('volunteer1@homecoming.test');
+  ev := _ev(pa, 'dinner', 1, null, d1);
+  perform push_batch(jsonb_build_array(ev));
+  r := push_batch(jsonb_build_array(_ev(pb, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'wrong guest'))));
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%another guest%', 'a void cannot point at another guest''s scan');
+  ev3 := _ev(pa, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'oops'));
+  perform push_batch(jsonb_build_array(ev3));
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev3->'payload'->>'id', 'reason', 'undo the undo'))));
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Nothing to undo%', 'a void cannot point at another void');
   perform _back();
 
   -- On-spot registration + duplicate mobile
@@ -146,6 +163,17 @@ begin
   perform admin_set_user('admin@homecoming.test', 'Test Admin', 'staff', true);
   perform _ok(true, 'with a second admin, the first can be demoted');
   perform _back();
+
+  -- Function grants: signed-out visitors get nothing; signed-in users get exactly the app's functions
+  perform _ok(not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')), 'anon can execute no function in the public schema');
+  perform _ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 13, 'signed-in users can execute exactly the 13 functions the app needs');
 
   -- Append-only
   perform _ok(_try('update scan_events set qty = 9') like '%append-only%', 'scan_events cannot be updated');

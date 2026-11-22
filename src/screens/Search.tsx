@@ -102,7 +102,7 @@ export function SearchScreen() {
 
       {roster && results.length === 0 && (
         <div className="empty" style={{ paddingTop: 48 }}>
-          <h2 style={{ fontSize: 22, lineHeight: 28 + 'px' }}>
+          <h2 style={{ fontSize: 22, lineHeight: '28px' }}>
             {q.trim() ? 'No one matches “' + q.trim() + '”' : 'No one matches these filters'}
           </h2>
           <p className="t-body muted">

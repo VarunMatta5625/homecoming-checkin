@@ -16,8 +16,12 @@ export function UndoSheet({ event, who, detail, onClose, onUndone }: { event: Sc
   const confirm = async () => {
     if (!reason || busy) return
     setBusy(true)
-    await voidEvent(event, note.trim() ? reason + ': ' + note.trim() : reason)
-    onUndone()
+    try {
+      await voidEvent(event, note.trim() ? reason + ': ' + note.trim() : reason)
+      onUndone()
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

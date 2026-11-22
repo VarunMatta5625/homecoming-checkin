@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useLayer } from '../lib/layers.ts'
-import { mmss, plural } from '../lib/format.ts'
+import { mmss } from '../lib/format.ts'
 import type { SyncStatus } from '../lib/hooks.ts'
 import { SPRITE, type IconName } from './sprite.ts'
 
@@ -301,17 +301,20 @@ export function Empty({ icon, tone = 'neutral', title, body, children }: { icon:
   )
 }
 
+/** Top bar of a pushed screen, with the filled strip behind the phone's status bar above it. */
 export function NavBar({ back, onBack, title, right }: { back: string; onBack: () => void; title: string; right?: ReactNode }) {
   return (
-    <div className="navbar">
-      <button type="button" className="navbtn" style={{ justifySelf: 'start', paddingLeft: 0 }} onClick={onBack}>
-        <Icon name="chev-l" size="m" />
-        {back}
-      </button>
-      <h2>{title}</h2>
-      <span style={{ justifySelf: 'end' }}>{right}</span>
-    </div>
+    <>
+      <div style={{ height: 'max(env(safe-area-inset-top),8px)', background: 'var(--bar)' }} />
+      <div className="navbar">
+        <button type="button" className="navbtn" style={{ justifySelf: 'start', paddingLeft: 0 }} onClick={onBack}>
+          <Icon name="chev-l" size="m" />
+          {back}
+        </button>
+        <h2>{title}</h2>
+        <span style={{ justifySelf: 'end' }}>{right}</span>
+      </div>
+    </>
   )
 }
 
-export const guestsLabel = (n: number) => plural(n, 'guest')
