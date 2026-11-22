@@ -77,4 +77,23 @@ export const demoBackend: Backend = {
     else list.push(user)
     localStorage.setItem(USERS_KEY, JSON.stringify(list))
   },
+  // Demo mode has no database: the import is checked and counted, but nothing is stored.
+  async importGuests(rows, opts) {
+    await sleep(600)
+    const seen = new Set<string>()
+    let flagged = 0
+    for (const r of rows) {
+      if (seen.has(r.mobile)) flagged++
+      seen.add(r.mobile)
+    }
+    return { imported: rows.length, flagged, retired: opts.replace ? demoSnapshot().parties.length : 0 }
+  },
+  async exportPasses() {
+    await sleep(300)
+    return demoSnapshot().parties.map((p) => ({
+      pass_code: p.passCode, qr_token: p.qrToken, lead_name: p.leadName, batch_year: p.batchYear, school: p.school, department: p.department,
+      course: p.course, mobile_last4: p.mobileLast4, spouse: p.spouse, children: p.children, party_size: p.partySize, parking: p.parking,
+      mobile: null, email: null,
+    }))
+  },
 }

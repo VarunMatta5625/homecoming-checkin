@@ -173,7 +173,7 @@ begin
   perform _ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 13, 'signed-in users can execute exactly the 13 functions the app needs');
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 15, 'signed-in users can execute exactly the 15 functions the app needs');
 
   -- Sign-up hook: only listed emails may create an account, and only Supabase Auth may run the hook
   execute 'set local role supabase_auth_admin';
@@ -191,4 +191,94 @@ begin
   perform _ok(_try('update scan_events set qty = 9') like '%append-only%', 'scan_events cannot be updated');
   perform _ok(_try('delete from scan_events') like '%append-only%', 'scan_events cannot be deleted');
   raise notice 'ALL CHECKS PASSED';
+end $t$;
+
+-- Guest import and pass export (run after the block above, as the same session)
+do $t$
+declare
+  rows jsonb; bad jsonb; r jsonb; ex jsonb; n int; before_n int; t0 timestamptz; err text; old_ids uuid[]; ch0 bigint;
+begin
+  update staff_users set role = 'admin' where email = 'admin@homecoming.test';
+  select jsonb_agg(jsonb_build_object('name', 'Bulk Guest ' || g, 'batchYear', 1990 + (g % 30), 'school', 'School of Science',
+           'department', 'Physics', 'course', 'M.Sc',
+           'mobile', case when g = 3 then '90000 00001' else '+91 ' || (7000000000 + case when g = 2 then 1 else g end)::text end,
+           'email', 'bulk' || g || '@example.com', 'spouse', case when g % 3 = 0 then 'yes' else 'no' end, 'children', g % 3,
+           'parking', 'none'))
+    into rows from generate_series(1, 5000) g;
+  select count(*) into before_n from parties where deleted_at is null;
+
+  -- Only admins may import or export
+  perform _as('volunteer1@homecoming.test');
+  perform _ok(_try('select admin_import_guests(''x.csv'', ''[]'', false)') like '%not authorised%', 'volunteer cannot import guests');
+  perform _ok(_try('select admin_export_passes()') like '%not authorised%', 'volunteer cannot export passes');
+  perform _back();
+  perform _as('staff@homecoming.test');
+  perform _ok(_try('select admin_import_guests(''x.csv'', ''[]'', false)') like '%not authorised%', 'staff cannot import guests');
+  perform _ok(_try('select admin_export_passes()') like '%not authorised%', 'staff cannot export passes');
+  perform _back();
+  execute 'set local role anon';
+  perform _ok(_try('select admin_import_guests(''x.csv'', ''[]'', false)') like 'permission denied%', 'signed-out visitor cannot import guests');
+  perform _ok(_try('select admin_export_passes()') like 'permission denied%', 'signed-out visitor cannot export passes');
+  execute 'reset role';
+
+  -- A bad row stops the whole import: nothing is written
+  perform _as('admin@homecoming.test');
+  bad := jsonb_build_array(rows->0, jsonb_build_object('name', 'No Phone', 'batchYear', 2001, 'school', 'School of Law', 'course', 'LLB', 'mobile', '12345'));
+  err := _try('select admin_import_guests(''bad.csv'', ' || quote_literal(bad::text) || ', false)');
+  perform _back();
+  perform _ok(err like 'Guest 2 (No Phone): the mobile needs 10 digits', 'a bad row is refused and named by its position');
+  perform _ok((select count(*) from parties where deleted_at is null) = before_n and not exists (select 1 from import_batches where filename = 'bad.csv'),
+              'a refused import writes nothing');
+
+  -- 5000 guests in one go (timing is printed; the hosted database stops a request after about 8 seconds)
+  perform _as('admin@homecoming.test');
+  t0 := clock_timestamp();
+  r := admin_import_guests('big.csv', rows, false);
+  perform _back();
+  raise notice 'TIMING: importing 5000 guests took % ms', round(extract(epoch from clock_timestamp() - t0) * 1000);
+  perform _ok((r->>'imported')::int = 5000 and (select count(*) from parties where deleted_at is null) = before_n + 5000, 'admin imports 5000 guests');
+  perform _ok((select count(distinct pass_code) from parties) = (select count(*) from parties), 'every pass code is different');
+  perform _ok((select count(*) from parties where import_batch_id = (r->>'batch')::uuid and pass_code ~ '^GH26-[2-9A-HJKMNP-TV-Z]{5}$') = 5000, 'pass codes use the GH26-XXXXX format');
+  perform _ok((select count(distinct qr_token) from parties) = (select count(*) from parties) and (select min(length(qr_token)) from parties where import_batch_id = (r->>'batch')::uuid) = 22, 'every QR token is different and 22 characters');
+  perform _ok((r->>'flagged')::int = 2, 'a repeated mobile is flagged, in the file and against an existing guest');
+  perform _ok((select count(*) from parties where import_batch_id = (r->>'batch')::uuid and possible_duplicate_of is not null) = 2, 'flagged guests point at the guest they may repeat');
+  perform _ok((select mobile from party_contacts c join parties p on p.id = c.party_id where p.lead_name = 'Bulk Guest 1') = '+917000000001', 'imported mobile is stored as +91 and ten digits, in party_contacts only');
+  perform _ok((select mobile_last4 from parties where lead_name = 'Bulk Guest 1') = '0001', 'imported guest keeps only the last 4 digits in the roster');
+  perform _ok((select count(*) from audit_log where table_name = 'parties' and action = 'insert' and reason = 'Guest list import: big.csv') = 5000, 'every imported guest is in the audit log with the file name');
+
+  -- Replace: refused while scans exist, and while the event is live
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_import_guests(''again.csv'', ' || quote_literal(jsonb_build_array(rows->0)::text) || ', true)') like 'Scans already exist%', 'replace is refused while scans exist');
+  perform _back();
+  update event_settings set is_live = true;
+  alter table scan_events disable trigger scan_events_no_update; delete from scan_events; alter table scan_events enable trigger scan_events_no_update;
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_import_guests(''again.csv'', ' || quote_literal(jsonb_build_array(rows->0)::text) || ', true)') like 'The event is live%', 'replace is refused once the event is live');
+  r := admin_import_guests('late.csv', jsonb_build_array(jsonb_build_object('name', 'Late Guest', 'batchYear', 2000, 'school', 'School of Law', 'course', 'LLB', 'mobile', '9111111111')), false);
+  perform _back();
+  perform _ok((r->>'imported')::int = 1, 'adding guests is still allowed once the event is live');
+  update event_settings set is_live = false;
+
+  -- Replace: old guests are retired (soft delete), phones see the change, a retired guest's mobile is not a duplicate
+  select array_agg(id) into old_ids from parties where deleted_at is null;
+  select max(change_seq) into ch0 from parties;
+  perform _as('admin@homecoming.test');
+  r := admin_import_guests('fresh.csv', jsonb_build_array(
+         jsonb_build_object('name', 'Fresh One', 'batchYear', 1999, 'school', 'School of Science', 'course', 'B.Sc', 'mobile', '9000000001', 'spouse', 'maybe', 'children', 2, 'parking', 'two_wheeler', 'dinnerOverride', 6),
+         jsonb_build_object('name', 'Fresh Two', 'batchYear', 1999, 'school', 'School of Law', 'course', 'LLB', 'mobile', '9000000002')), true);
+  perform _back();
+  perform _ok((r->>'retired')::int = cardinality(old_ids) and (r->>'imported')::int = 2, 'replace retires every current guest and adds the new ones');
+  perform _ok((select count(*) from parties where deleted_at is null) = 2, 'only the new guests are current after a replace');
+  perform _ok((select min(change_seq) from parties where id = any(old_ids)) > ch0, 'retired guests get new change numbers, so phones learn about them');
+  perform _ok((r->>'flagged')::int = 0, 'a retired guest''s mobile is not flagged as a duplicate');
+  perform _ok((select entitled from party_state ps join parties p on p.id = ps.party_id where p.lead_name = 'Fresh One') = 6, 'dinner override sets the entitlement');
+  perform _ok((select parking::text || spouse::text || children::text from parties where lead_name = 'Fresh One') = 'two_wheelermaybe2', 'imported spouse, children and parking are kept');
+
+  -- Export: every current guest, contacts included, and the export itself is audited
+  perform _as('admin@homecoming.test');
+  ex := admin_export_passes();
+  perform _back();
+  perform _ok(jsonb_array_length(ex) = 2 and ex->0 ? 'pass_code' and ex->0 ? 'qr_token' and ex->0 ? 'mobile' and ex->0 ? 'email' and ex->0 ? 'party_size', 'export lists current guests with the columns the pass sheets use');
+  perform _ok((select count(*) from audit_log where action = 'read' and table_name = 'party_contacts' and reason = 'Pass list export') = 1, 'an export is recorded in the audit log');
+  raise notice 'IMPORT CHECKS PASSED';
 end $t$;

@@ -11,7 +11,7 @@
 ![Vite 8](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
 ![Offline first](https://img.shields.io/badge/offline-first-981F2A?style=flat-square)
-![DB checks](https://img.shields.io/badge/database%20checks-58-30d158?style=flat-square)
+![DB checks](https://img.shields.io/badge/database%20checks-86-30d158?style=flat-square)
 ![No servers](https://img.shields.io/badge/servers%20to%20run-0-ff9f0a?style=flat-square)
 
 Volunteers scan a guest's QR pass at the gate and at dinner counters, register walk-ins, and see their own activity.<br>
@@ -92,6 +92,7 @@ flowchart LR
 | **Stats** (staff) | Served, checked in, still to serve, needs review, per-counter totals with active/quiet chips |
 | **Needs review** (staff) | Over-served parties, served without entry, possible duplicates; correct with a mandatory reason |
 | **Users and roles** (admin) | Add people by email, set role, switch off. The last active admin cannot be removed |
+| **Import guests** (admin) | Download a CSV template (and a PDF guide), check a filled file row by row, then Add to or Replace the guest list. Download the pass list (codes, QR tokens, contacts) for sending passes. Replace is refused once any scan exists or the event is live |
 | **Offline** | First run downloads the guest list. After that scans, search, register and undo all work with no signal |
 | **Demo mode** | No keys needed. 480 fake parties, demo sign-in chips and a "simulate a scan" panel for local development |
 
@@ -412,6 +413,7 @@ Server-side `_push_event` re-checks everything: a void must point at a plain `pa
 | **A locked database froze sign-out** | Leave first, wipe in the background with a timeout and a retry flag | [`db.ts`](src/lib/db.ts) |
 | **Shipping the demo roster by accident** | A production build fails without both Supabase variables | [`vite.config.ts`](vite.config.ts) |
 | **Strangers filling the user list** | Sign-up hook refuses unlisted emails; the app maps the error to a friendly screen | [`…0006`](supabase/migrations/20261122000006_signup_hook.sql) |
+| **A big import timing out** | One set-based insert for the whole file: 5000 guests take 0.3 s. A first version looked things up row by row, got slower with every row and took 8.8 s; the hosted database cancels a request at about 8 s | [`…0007`](supabase/migrations/20261122000007_guest_import.sql) |
 | **A new function silently open to the signed-out role** | Explicit revokes, and a database check that fails if any function is executable by `anon` | [`…0005`](supabase/migrations/20261122000005_lock_down.sql), [`checks.sql`](supabase/test/checks.sql) |
 | **Two implementations of one rule** | The SQL view is the spec; the checks run the app's rules against it | [`checks.sql`](supabase/test/checks.sql) |
 
@@ -469,7 +471,7 @@ The public [privacy policy](src/screens/Privacy.tsx) is served at `/privacy` wit
 ├── supabase/
 │   ├── migrations/       six files, run in order
 │   ├── seed_admin.sql, seed_dev.sql, setup_all.sql
-│   └── test/             Docker harness + 58 acceptance checks
+│   └── test/             Docker harness + 86 acceptance checks
 ├── scripts/test_passes.py                      printable QR sheets for rehearsals
 ├── .github/workflows/ci.yml                    lint, typecheck, build, database checks
 ├── CONTEXT.md, MISSING_SCREENS.md              history, decisions, to-do
@@ -487,6 +489,7 @@ Everything the UI needs from a server is one interface, [`src/backend/types.ts`]
 | `heartbeat` | `device_heartbeat` |
 | `ping` | `GET /auth/v1/health` with the anon key, 5 s timeout |
 | `listUsers` / `saveUser` | `admin_list_users` / `admin_set_user` |
+| `importGuests` / `exportPasses` | `admin_import_guests` / `admin_export_passes` |
 
 ### Syntax and conventions
 
@@ -558,7 +561,7 @@ Six migrations in [`supabase/migrations/`](supabase/migrations), run in filename
 | `…05_lock_down` | No function open to `anon`; contacts and notes only via audited paths; stricter voids |
 | `…06_signup_hook` | `hook_before_user_created`. **Also switch it on** in Authentication, Hooks, Before User Created |
 
-**RPCs:** `whoami`, `get_snapshot`, `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`. The app calls the first four plus the two admin user RPCs today; the rest exist on the server for features still to be wired (see [Known limits](#known-limits)).
+**RPCs:** `whoami`, `get_snapshot`, `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`, `admin_import_guests`, `admin_export_passes`. The app calls the first four plus the two admin user RPCs and the two guest import and export RPCs today; the rest exist on the server for features still to be wired (see [Known limits](#known-limits)).
 
 ### Acceptance tests
 
