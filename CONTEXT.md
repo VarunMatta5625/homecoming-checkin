@@ -71,6 +71,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Blocked scans are not stored (events are real-world facts only), so Activity does not list them.
 - Stats "Active/Quiet" chips are derived from events. Stats and the needs-review list are derived locally; the `stats_*` and `review_queue` RPCs are not built.
 - UI prefs and the session live in localStorage, not a Dexie `meta` table.
+- Each account's last counter is remembered on that phone (`gh26.counters` in localStorage, keyed by the staff id; `src/lib/counter.ts`). Signing out wipes prefs but not this, so the next sign-in of the same account skips the counter step. Another phone or a browser reset asks once again; a server-side default per account would fix that.
 - The app version is `package.json` version plus the short commit (set in `vite.config.ts`), shown in Account and sent in each phone's heartbeat so a phone on an old build can be spotted.
 
 ## Bugs found and fixed (worth remembering)

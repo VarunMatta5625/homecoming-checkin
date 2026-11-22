@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_VERSION, COUNTERS, DEMO, counterLabel } from '../lib/config.ts'
 import { resetDemoData, signOutAndWipe } from '../lib/actions.ts'
+import { applyCounter } from '../lib/counter.ts'
 import { ago, fmtTime, initials, roleLabel } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { leaveLayers } from '../lib/layers.ts'
@@ -10,11 +11,6 @@ import { checkOnline } from '../lib/sync.ts'
 import { ui } from '../lib/ui.ts'
 import { hasRole } from '../lib/types.ts'
 import { Alert, Btn, Chip, Group, Icon, Seg, Sheet, Switch } from './ui.tsx'
-
-export function applyCounter(code: string) {
-  const kind = COUNTERS.find((c) => c.code === code)?.kind
-  prefs.set({ counter: code, mode: kind === 'gate' ? 'entry' : 'dinner' })
-}
 
 export function CounterPicker({ initial, onDone, onClose }: { initial: string | null; onDone: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState(initial)
