@@ -12,9 +12,10 @@ Database for the check-in app: schema, row-level security and the RPCs the app c
 | `migrations/20261122000004_update_party_lock.sql` | Makes `update_party` take the same lock as `push_batch` (existing projects: run just this file) |
 | `migrations/20261122000005_lock_down.sql` | Signed-out users can run no functions; contacts and `parties.notes` readable only through audited functions; a void must target a plain scan of the same guest (existing projects: run just this file) |
 | `migrations/20261122000006_signup_hook.sql` | `hook_before_user_created`: only emails on the `staff_users` list can create an account. Needs one dashboard step, see below (existing projects: run just this file) |
+| `migrations/20261122000007_guest_import.sql` | `admin_import_guests` (load a whole guest list in one go, Add or Replace) and `admin_export_passes` (pass codes and contacts, audited). Admin only (existing projects: run just this file) |
 | `seed_admin.sql` | Your first admin (edit the email first) |
 | `seed_dev.sql` | Fake test accounts and 120 fake parties. Testing only |
-| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 58 acceptance checks |
+| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 86 acceptance checks |
 
 When you add a function, end its migration with `revoke execute on function ... from public, anon;` and grant it to `authenticated` by name. Postgres lets everyone run a new function by default; the checks fail if one is open to the signed-out role.
 
@@ -25,8 +26,8 @@ Running migration 6 only creates the function. In the dashboard open Authenticat
 ## Set up a hosted project
 
 1. Create a project at supabase.com. Pick the region closest to the venue (this project uses Sydney, `ap-southeast-2`). Save the database password somewhere safe.
-2. Open **SQL editor**. Run the three migration files in filename order, each in its own run.
-3. Run `seed_dev.sql` for fake data and test accounts. (For a real event, run `seed_admin.sql` instead, and import attendees with a script that uses the service-role key locally.)
+2. Open **SQL editor**. Run the migration files in filename order, each in its own run (or run `setup_all.sql` once on a new project).
+3. Run `seed_dev.sql` for fake data and test accounts. (For a real event, run `seed_admin.sql` instead, and load the real guest list from the app: Account, Admin, Import guests. The app gives you a CSV template and a PDF guide. No script and no service-role key is needed.)
 4. Sign-in is Google only (Authentication, Sign In / Providers, Google; setup is in `CONTEXT.md`). Add your first admin with `seed_admin.sql` (edit the email first), or add people later from the app (Admin, Users). `seed_dev.sql` also adds fake `@homecoming.test` rows; they cannot sign in, and the cleanup SQL in `CONTEXT.md` removes them.
 5. **Project Settings, API**: copy the **Project URL** and the **anon public** key into `.env.local` at the project root. Never copy the `service_role` key into the app.
 

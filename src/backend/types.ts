@@ -1,6 +1,15 @@
+import type { GuestRow, PassRow } from '../lib/guestImport.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session, Role } from '../lib/types.ts'
 
 export type SignInResult = { session: Session } | { rejectedEmail: string } | { error: string }
+
+export interface ImportResult {
+  imported: number
+  /** Guests whose mobile matched another guest: created, but flagged for review. */
+  flagged: number
+  /** Guests retired by a replace. */
+  retired: number
+}
 
 export interface AdminUser {
   email: string
@@ -40,4 +49,8 @@ export interface Backend {
   ping(): Promise<boolean>
   listUsers(): Promise<AdminUser[]>
   saveUser(user: AdminUser): Promise<void>
+  /** Admin. Loads a guest list in one go (all rows or none). replace retires the current guests first. */
+  importGuests(rows: GuestRow[], opts: { filename: string; replace: boolean }): Promise<ImportResult>
+  /** Admin. Every current guest with pass code, QR token and contact. The server records the export. */
+  exportPasses(): Promise<PassRow[]>
 }

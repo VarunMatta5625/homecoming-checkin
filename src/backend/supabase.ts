@@ -2,7 +2,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_KEY, SUPABASE_URL } from '../lib/config.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
-import type { AdminUser, Backend, Cursors, SignInResult, Snapshot } from './types.ts'
+import type { GuestRow, PassRow } from '../lib/guestImport.ts'
+import type { AdminUser, Backend, Cursors, ImportResult, SignInResult, Snapshot } from './types.ts'
 
 const PAGE = 1000
 
@@ -175,5 +176,17 @@ export const supabaseBackend: Backend = {
   async saveUser(u) {
     const { error } = await sb().rpc('admin_set_user', { p_email: u.email, p_name: u.name, p_role: u.role, p_active: u.active })
     if (error) throw new Error(error.message)
+  },
+
+  async importGuests(rows: GuestRow[], opts) {
+    const { data, error } = await sb().rpc('admin_import_guests', { p_filename: opts.filename, p_rows: rows, p_replace: opts.replace })
+    if (error) fail(error)
+    return data as ImportResult
+  },
+
+  async exportPasses() {
+    const { data, error } = await sb().rpc('admin_export_passes')
+    if (error) fail(error)
+    return data as PassRow[]
   },
 }

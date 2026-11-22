@@ -54,6 +54,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,png,woff2,webmanifest}'],
           navigateFallback: '/index.html',
+          // The PDF guide is a real file, not an app page.
+          navigateFallbackDenylist: [/\.pdf$/],
           cleanupOutdatedCaches: true,
         },
       }),

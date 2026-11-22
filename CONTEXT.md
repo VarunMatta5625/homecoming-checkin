@@ -25,7 +25,7 @@ npm install
 npm run dev              # http://localhost:5173
 npm run dev:phone        # HTTPS on the LAN (iPhone camera)
 npm run build            # static output in dist/, SPA rewrite in vercel.json
-supabase/test/harness.sh # 58 database acceptance checks (needs Docker)
+supabase/test/harness.sh # 86 database acceptance checks (needs Docker)
 ```
 
 Modes (decided in `src/lib/config.ts`):
@@ -51,7 +51,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Migrations in `supabase/migrations/` (run in order): schema, security (RLS, audit triggers, last-admin guard, grants), RPCs, an `update_party` lock fix (`…0004`), and a lock-down pass (`…0005`: function grants, no direct reads of contacts or notes, stricter voids), and a sign-up hook (`…0006`: only listed emails can create an account; it must also be switched on in the dashboard, Authentication, Hooks). When the hook refuses, Google sends the person back with `error_description` containing `NOT_ON_LIST`; `src/lib/signinReturn.ts` reads it before the Supabase client clears the address and the sign-in screen shows "You're not on the list yet". `supabase/setup_all.sql` is all of them plus fake seed data for a brand-new project.
 - RPCs: `whoami`, `get_snapshot` (paged; used for the first download and incremental pulls), `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`.
 - All writes go through SECURITY DEFINER RPCs; tables have read-only RLS policies. The roster holds only the last 4 digits of a mobile number. Full mobile and email are in `party_contacts` (staff and up).
-- 58 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
+- 86 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
 - Data access settings when the project was created: Data API on, "automatically expose new tables" off. Verified that both settings pass all checks.
 
 ### Auth
@@ -105,7 +105,17 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 
 ## Still to do
 
-See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). Also: Admin Audit screen reading `audit_feed`; `get_party_contact` in the guest screen; Devices and sync screen; stats RPCs if wanted; real attendee import script (service-role key, local only, insert-only dedupe); `passes.csv` export.
+See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). Also: Admin Audit screen reading `audit_feed`; `get_party_contact` in the guest screen; Devices and sync screen; stats RPCs if wanted; the real guest import and the pass list export are built (see "Guest import" below).
+
+## Guest import (23 Nov 2026 branch)
+
+- Admin screen `/admin/import` (Account sheet, Admin, Import guests). Template is built in the browser from `FIELDS` in `src/lib/guestImport.ts` (headings only, UTF-8 with a byte-order mark). `public/guest-list-guide.pdf` is the printable guide, made by `scripts/make_guest_guide.py` (keep its column table in step with `FIELDS`).
+- The browser checks the whole file first (CSV parser handles quotes, CRLF, semicolons, Windows-1252; Excel's `9.87654E+09` and `.0` mobile damage is reported by name; school must match `SCHOOLS`). Nothing is sent while there are problems. The server checks again.
+- `admin_import_guests(filename, rows, replace)` (migration 0007) is one transaction and one set-based insert. Server makes pass codes and QR tokens (core functions only: `gen_random_uuid`, because `pgcrypto` lives in the `extensions` schema on hosted Supabase). It takes the same advisory lock as `push_batch`. Same mobile as a current guest or an earlier row: created but flagged (`possible_duplicate_of`), never merged.
+- Replace soft-deletes the current guests (`deleted_at`, so phones learn through the normal change cursor). It is refused when `event_settings.is_live` is true or any `scan_events` row exists. Add stays allowed when live (late registrations).
+- `admin_export_passes()` returns every current guest with contacts and writes an audit_log read row. The CSV's first twelve columns match what `scripts/test_passes.py` reads.
+- Timing in the Docker harness: 5000 guests in about 0.3 s. A row-by-row loop with lookups took 8.8 s (stale plan statistics on fresh tables), too close to the hosted request limit.
+- Limits: 10,000 guests per file; the "test activity reset" button is still to build (README has the SQL).
 
 ## Code review notes (22 Nov 2026, left for later)
 

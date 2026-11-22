@@ -8,7 +8,7 @@ import { fmtTime, initials, roleLabel } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
 import type { Role } from '../lib/types.ts'
 
-function Page({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
+export function Page({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   const navigate = useNavigate()
   return (
     <main className="screen" style={{ paddingTop: 0 }}>

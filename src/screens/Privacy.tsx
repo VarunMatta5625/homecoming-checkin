@@ -31,7 +31,7 @@ export function PrivacyScreen() {
       </p>
       <p className="t-body" style={{ margin: 0 }}>
         <b>Guests.</b> The guest list holds each guest’s name, batch year, school and course, party size, parking choice, and the last four digits of their
-        mobile number. Staff and admins can also open a guest’s full mobile number and email address, and every time they do, it is recorded. A guest who
+        mobile number. Staff and admins can also open a guest’s full mobile number and email address, and every time they do, it is recorded. Admins can also download the whole guest list with contact details, and that is recorded too. A guest who
         registers at the desk gives these details to the volunteer.
       </p>
       <p className="t-body" style={{ margin: 0 }}>
