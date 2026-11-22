@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { CounterPicker, applyCounter } from '../components/AccountSheet.tsx'
+import { CounterPicker } from '../components/AccountSheet.tsx'
 import { Btn, Empty, Icon, Logo } from '../components/ui.tsx'
 import { counterLabel } from '../lib/config.ts'
 import { downloadRoster } from '../lib/actions.ts'
+import { applyCounter, savedCounter } from '../lib/counter.ts'
 import { db } from '../lib/db.ts'
 import { fmtTime, plural, roleLabel } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
@@ -127,6 +128,12 @@ function ReadyStep() {
     const parties = await db.parties.toArray()
     return { parties: parties.length, guests: parties.reduce((n, x) => n + x.partySize, 0) }
   }, [])
+  // Signed in before on this phone: go straight back to the counter they used last time, without asking.
+  const before = savedCounter(p.session?.actorId)
+  useEffect(() => {
+    if (before) applyCounter(before)
+  }, [before])
+  if (before) return null
   return (
     <main className="screen notabs stack" style={{ padding: '48px 24px 0', gap: 12, minHeight: '100dvh' }}>
       <div className="stack" style={{ alignItems: 'center', textAlign: 'center', gap: 10 }}>
