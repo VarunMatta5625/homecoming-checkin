@@ -1,3 +1,4 @@
+import './lib/signinReturn.ts' // first: it reads the address before the Supabase client can clear it
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'

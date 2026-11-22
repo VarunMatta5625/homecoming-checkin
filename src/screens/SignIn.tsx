@@ -5,14 +5,17 @@ import { Btn, Chip, Icon, Logo } from '../components/ui.tsx'
 import { DEMO } from '../lib/config.ts'
 import { initials } from '../lib/format.ts'
 import { prefs } from '../lib/prefs.ts'
+import { signInReturnError } from '../lib/signinReturn.ts'
 
 type Who = 'volunteer' | 'staff' | 'admin' | 'unlisted'
 
 export function SignInScreen() {
   const [busy, setBusy] = useState(false)
-  const [rejected, setRejected] = useState<string | null>(null)
+  // Back from Google with a refusal (the account hook): "" means the email is not known here.
+  const [returned] = useState(signInReturnError)
+  const [rejected, setRejected] = useState<string | null>(returned === 'not-listed' ? '' : null)
   const [desk, setDesk] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(returned === 'other' ? 'Google sign-in didn’t finish. Try again.' : null)
 
   const finish = (r: SignInResult) => {
     if ('session' in r) prefs.set({ session: r.session, sessionExpired: false })
@@ -37,7 +40,7 @@ export function SignInScreen() {
     void backend.resume?.().then((r) => r && finish(r)).catch(() => {})
   }, [])
 
-  if (rejected)
+  if (rejected !== null)
     return (
       <main className="screen notabs stack" style={{ alignItems: 'center', textAlign: 'center', padding: '72px 24px 0', gap: 10 }}>
         <div style={{ width: 88, height: 88, borderRadius: 44, background: 'var(--warn-bg)', color: 'var(--warn-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -45,17 +48,19 @@ export function SignInScreen() {
         </div>
         <h1 className="t-title" style={{ margin: '12px 0 0', fontSize: 26, lineHeight: '32px', fontWeight: 700 }}>You’re not on the list yet</h1>
         <p className="t-body muted" style={{ margin: 0 }}>This app is only for Homecoming volunteers and staff. Ask the volunteer desk to approve your account, then try again.</p>
-        <div className="card" style={{ marginTop: 16, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}>
-          <span className="avatar">{initials(rejected.split('@')[0]!.replace('.', ' '))}</span>
-          <div className="stack grow">
-            <span className="t-cap muted">Signed in as</span>
-            <span className="t-head ellipsis">{rejected}</span>
+        {rejected && (
+          <div className="card" style={{ marginTop: 16, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}>
+            <span className="avatar">{initials(rejected.split('@')[0]!.replace('.', ' '))}</span>
+            <div className="stack grow">
+              <span className="t-cap muted">Signed in as</span>
+              <span className="t-head ellipsis">{rejected}</span>
+            </div>
           </div>
-        </div>
+        )}
         <div className="stack g2" style={{ width: '100%', marginTop: 12 }}>
           <Btn onClick={() => setRejected(null)}>Try another account</Btn>
           <Btn kind="plain" onClick={() => setDesk(!desk)}>{desk ? 'Hide volunteer desk details' : 'Show volunteer desk details'}</Btn>
-          {desk && <div className="note"><Icon name="info" size="m" style={{ color: 'var(--text2)' }} /><span>Tell the desk the email shown above. They add it to the list, then you can sign in again here.</span></div>}
+          {desk && <div className="note"><Icon name="info" size="m" style={{ color: 'var(--text2)' }} /><span>Tell the desk {rejected ? 'the email shown above' : 'the Google email you just used'}. They add it to the list, then you can sign in again here.</span></div>}
         </div>
       </main>
     )
