@@ -62,7 +62,7 @@ export function SignInScreen() {
 
   return (
     <main className="screen notabs stack" style={{ alignItems: 'center', textAlign: 'center', padding: '56px 24px 0', gap: 10, minHeight: '100dvh' }}>
-      <Logo name="homecoming" height={72} />
+      <Logo name="homecoming" height={132} />
       <h1 className="lt" style={{ padding: '28px 0 0', fontSize: 30, lineHeight: '36px' }}>Welcome, volunteers</h1>
       <p className="t-body muted" style={{ margin: 0, maxWidth: 320 }}>Check guests in at the gate and serve dinner, even when the signal drops.</p>
       <div className="stack g2" style={{ width: '100%', marginTop: 28 }}>
