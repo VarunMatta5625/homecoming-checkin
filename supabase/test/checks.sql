@@ -175,6 +175,18 @@ begin
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
       and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 13, 'signed-in users can execute exactly the 13 functions the app needs');
 
+  -- Sign-up hook: only listed emails may create an account, and only Supabase Auth may run the hook
+  execute 'set local role supabase_auth_admin';
+  r := hook_before_user_created('{"user": {"email": "Admin@Homecoming.test"}}');
+  err := (hook_before_user_created('{"user": {"email": "stranger@example.com"}}'))->'error'->>'message';
+  ev := hook_before_user_created('{"user": {}}');
+  execute 'reset role';
+  perform _ok(r = '{}'::jsonb, 'sign-up hook lets a listed email in, whatever its capitals');
+  perform _ok(err like 'NOT_ON_LIST%', 'sign-up hook refuses an email that is not listed');
+  perform _ok(ev->'error' is not null, 'sign-up hook refuses a user with no email');
+  perform _ok(not has_function_privilege('authenticated', 'hook_before_user_created(jsonb)', 'execute')
+          and not has_function_privilege('anon', 'hook_before_user_created(jsonb)', 'execute'), 'sign-up hook cannot be called by users or the signed-out role');
+
   -- Append-only
   perform _ok(_try('update scan_events set qty = 9') like '%append-only%', 'scan_events cannot be updated');
   perform _ok(_try('delete from scan_events') like '%append-only%', 'scan_events cannot be deleted');

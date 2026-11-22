@@ -25,7 +25,7 @@ npm install
 npm run dev              # http://localhost:5173
 npm run dev:phone        # HTTPS on the LAN (iPhone camera)
 npm run build            # static output in dist/, SPA rewrite in vercel.json
-supabase/test/harness.sh # 54 database acceptance checks (needs Docker)
+supabase/test/harness.sh # 58 database acceptance checks (needs Docker)
 ```
 
 Modes (decided in `src/lib/config.ts`):
@@ -48,10 +48,10 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 ## Backend (Supabase)
 
 - Hosted project "Homecoming 2026" (region Sydney, ap-southeast-2). URL and publishable key are in `.env.local`. The service-role key is never used by the app and must never be committed or shared.
-- Migrations in `supabase/migrations/` (run in order): schema, security (RLS, audit triggers, last-admin guard, grants), RPCs, an `update_party` lock fix (`…0004`), and a lock-down pass (`…0005`: function grants, no direct reads of contacts or notes, stricter voids). `supabase/setup_all.sql` is all of them plus fake seed data for a brand-new project.
+- Migrations in `supabase/migrations/` (run in order): schema, security (RLS, audit triggers, last-admin guard, grants), RPCs, an `update_party` lock fix (`…0004`), and a lock-down pass (`…0005`: function grants, no direct reads of contacts or notes, stricter voids), and a sign-up hook (`…0006`: only listed emails can create an account; it must also be switched on in the dashboard, Authentication, Hooks). When the hook refuses, Google sends the person back with `error_description` containing `NOT_ON_LIST`; `src/lib/signinReturn.ts` reads it before the Supabase client clears the address and the sign-in screen shows "You're not on the list yet". `supabase/setup_all.sql` is all of them plus fake seed data for a brand-new project.
 - RPCs: `whoami`, `get_snapshot` (paged; used for the first download and incremental pulls), `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`.
 - All writes go through SECURITY DEFINER RPCs; tables have read-only RLS policies. The roster holds only the last 4 digits of a mobile number. Full mobile and email are in `party_contacts` (staff and up).
-- 54 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
+- 58 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
 - Data access settings when the project was created: Data API on, "automatically expose new tables" off. Verified that both settings pass all checks.
 
 ### Auth
@@ -111,7 +111,6 @@ See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). A
 
 - The volunteer undo window compares two timestamps the phone supplies, so a volunteer could stretch it, but only for their own scans. Using the server's receive time would break undo done offline.
 - `device_heartbeat` lets any signed-in user overwrite another device's row if they know its id. Low impact (it is only the status list).
-- Google sign-ups are open in Supabase (`disable_signup` false). The allowlist keeps strangers out of the data, but their accounts still appear under Authentication, Users.
 - `saveUser` throws the raw error instead of going through `fail()` like the other RPC calls, so an expired session during a user edit does not raise the "sign in again" banner.
 - Guest detail shows a car icon with "No parking" when there is no parking. The pass screen hides the chip instead. Pick one.
 - Counters are hard-coded in `config.ts` (counter picker, Stats rows) next to the `counters` table. Counters management (MISSING_SCREENS.md) should make the table the single source.
