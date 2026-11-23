@@ -25,8 +25,8 @@ npm install
 npm run dev              # http://localhost:5173
 npm run dev:phone        # HTTPS on the LAN (iPhone camera)
 npm run build            # static output in dist/, SPA rewrite in vercel.json
-npm test                 # vitest, 182 tests on the Stats maths and screens
-supabase/test/harness.sh # 86 database acceptance checks (needs Docker)
+npm test                 # vitest, 207 tests: Stats, undo, counters, local database
+supabase/test/harness.sh # 93 database acceptance checks (needs Docker)
 ```
 
 Modes (decided in `src/lib/config.ts`):
@@ -42,7 +42,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 
 - `screens/`: Scan, Search, Register, Activity, Stats, Review, GuestDetail, Admin (Users, Audit), SignIn, Setup.
 - `components/`: ui.tsx (design-system primitives), ResultFlow.tsx (one sheet for every scan result), UndoSheet, CorrectionSheet, AccountSheet, layout.tsx (TopRow, Banners, TabBar, re-sign-in sheet).
-- `lib/`: state.ts (`partyState`, mirrors the SQL view), actions.ts (all writes), sync.ts (flush outbox, pull changes, heartbeat), db.ts (Dexie plus `finishWipe`), prefs.ts and store.ts (localStorage store, follows other tabs), layers.ts (history-backed sheets), config.ts.
+- `lib/`: state.ts (`partyState`, mirrors the SQL view), actions.ts (all writes), sync.ts (flush outbox, pull changes, heartbeat, counter list), counters.ts (the counter list, from the server's table, built-in until then), db.ts (Dexie plus `finishWipe`), prefs.ts and store.ts (localStorage store, follows other tabs), layers.ts (history-backed sheets), config.ts.
 - `backend/`: `types.ts` (the seam), `supabase.ts` (live), `demoBackend.ts` (demo), `index.ts` (picks one). The Supabase client is created lazily so demo mode never builds one.
 - `styles/`: tokens.css (generated from the design system), gh.css (component CSS), app.css (real-viewport layout).
 
@@ -52,7 +52,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Migrations in `supabase/migrations/` (run in order): schema, security (RLS, audit triggers, last-admin guard, grants), RPCs, an `update_party` lock fix (`…0004`), and a lock-down pass (`…0005`: function grants, no direct reads of contacts or notes, stricter voids), and a sign-up hook (`…0006`: only listed emails can create an account; it must also be switched on in the dashboard, Authentication, Hooks). When the hook refuses, Google sends the person back with `error_description` containing `NOT_ON_LIST`; `src/lib/signinReturn.ts` reads it before the Supabase client clears the address and the sign-in screen shows "You're not on the list yet". `supabase/setup_all.sql` is all of them plus fake seed data for a brand-new project.
 - RPCs: `whoami`, `get_snapshot` (paged; used for the first download and incremental pulls), `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`.
 - All writes go through SECURITY DEFINER RPCs; tables have read-only RLS policies. The roster holds only the last 4 digits of a mobile number. Full mobile and email are in `party_contacts` (staff and up).
-- 86 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
+- 93 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
 - Data access settings when the project was created: Data API on, "automatically expose new tables" off. Verified that both settings pass all checks.
 
 ### Auth
@@ -120,12 +120,11 @@ See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). A
 
 ## Code review notes (22 Nov 2026, left for later)
 
-- The volunteer undo window compares two timestamps the phone supplies, so a volunteer could stretch it, but only for their own scans. Using the server's receive time would break undo done offline.
-- `device_heartbeat` lets any signed-in user overwrite another device's row if they know its id. Low impact (it is only the status list).
-- `saveUser` throws the raw error instead of going through `fail()` like the other RPC calls, so an expired session during a user edit does not raise the "sign in again" banner.
-- Guest detail shows a car icon with "No parking" when there is no parking. The pass screen hides the chip instead. Pick one.
-- Counters are hard-coded in `config.ts` (counter picker, Stats rows) next to the `counters` table. Counters management (MISSING_SCREENS.md) should make the table the single source.
-- Dexie schema is at version 1. Any change to stored fields needs `this.version(2)` with an upgrade, or phones keep an incompatible local copy.
+- Fixed in migration 8 and the app (23 Nov 2026): undo window, `device_heartbeat`, `saveUser` and `fail()`, the parking chip, counters from the table, Dexie upgrade safety. What is left of each:
+  - Undo window: **not closed.** A volunteer can still stretch the window for their own scans from their own phone by setting its clock back, because same-phone undo must keep trusting that phone's clock or an undo done offline would be refused. Migration 8 only refuses an undo dated *before* its scan, and judges an undo from a *different* phone by the server's clock. The app also stops offering Undo if the clock steps back past the scan.
+  - Heartbeat rows are keyed on (device, user). Nothing in the app reads `device_status` yet.
+  - Counters: phones copy the `counters` table every ten minutes (`lib/counters.ts`); the built-in list is the fallback. There is still no screen to edit counters (MISSING_SCREENS.md).
+  - Dexie stays at version 1. Add `this.version(2)` (full new layout, never edit v1) when stored fields change; `db.test.ts` proves an upgrade keeps rows. Another tab upgrading the database shows a "Reload this page" banner.
 - Remaining oxlint warnings are in `layers.ts`, `Scan.tsx` and `hooks.ts` (refs and effects in the history-sheet and scanner code). Left alone on purpose.
 
 ## Cleanup SQL (remove the old test users and all test scans)

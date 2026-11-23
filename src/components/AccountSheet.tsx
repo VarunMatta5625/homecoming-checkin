@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { APP_VERSION, COUNTERS, DEMO, counterLabel } from '../lib/config.ts'
+import { APP_VERSION, DEMO } from '../lib/config.ts'
+import { activeCounters, counterLabel, useCounters } from '../lib/counters.ts'
 import { resetDemoData, signOutAndWipe } from '../lib/actions.ts'
 import { applyCounter } from '../lib/counter.ts'
 import { ago, fmtTime, initials, roleLabel } from '../lib/format.ts'
@@ -14,10 +15,11 @@ import { Alert, Btn, Chip, Group, Icon, Seg, Sheet, Switch } from './ui.tsx'
 
 export function CounterPicker({ initial, onDone, onClose }: { initial: string | null; onDone: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState(initial)
+  const counters = useCounters()
   const sec = (title: string, kind: 'gate' | 'dinner') => (
     <Group header={title}>
       <div role="radiogroup" aria-label={title}>
-        {COUNTERS.filter((c) => c.kind === kind).map((c) => (
+        {activeCounters(counters, kind).map((c) => (
           <button key={c.code} type="button" className="cell" role="radio" aria-checked={code === c.code} onClick={() => setCode(c.code)}>
             <span className="grow">{c.label}{c.kind === 'gate' ? ' · Entry' : ''}</span>
             <span className={'radio' + (code === c.code ? ' on' : '')}>{code === c.code && <Icon name="check" size="s" />}</span>

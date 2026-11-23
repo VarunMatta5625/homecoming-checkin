@@ -1,6 +1,7 @@
 import { backend } from '../backend/index.ts'
 import { APP_VERSION } from './config.ts'
 import { db, finishWipe } from './db.ts'
+import { setCounters } from './counters.ts'
 import { prefs } from './prefs.ts'
 import { createStore } from './store.ts'
 import type { PushResult } from './types.ts'
@@ -91,10 +92,25 @@ async function heartbeat() {
   }
 }
 
+let countersAt = 0
+const COUNTERS_EVERY_MS = 10 * 60000
+/** Copy the server's counter list (a dozen rows). Every ten minutes is plenty; the built-in list covers until then. */
+async function refreshCounters() {
+  const p = prefs.get()
+  if (!backend.listCounters || !p.session || p.wipePending || Date.now() - countersAt < COUNTERS_EVERY_MS) return
+  countersAt = Date.now()
+  try {
+    setCounters(await backend.listCounters())
+  } catch {
+    countersAt = 0 // try again next cycle
+  }
+}
+
 async function syncCycle() {
   await flush()
   await pull()
   void heartbeat()
+  void refreshCounters()
 }
 
 /** Retry items the server rejected earlier. */

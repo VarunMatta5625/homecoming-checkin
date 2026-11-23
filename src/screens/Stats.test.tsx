@@ -21,6 +21,8 @@ vi.mock('../lib/sync.ts', () => ({ kickSync: h.kickSync, retryFailed: h.retryFai
 // The real Screen pulls in the backend, sync and session. Only its title and children matter here.
 vi.mock('../components/layout.tsx', () => ({ Screen: ({ title, children }: { title?: string; children: React.ReactNode }) => <main><h1>{title}</h1>{children}</main> }))
 
+import { BUILTIN_COUNTERS } from '../lib/config.ts'
+import { countersStore, setCounters } from '../lib/counters.ts'
 import { StatsScreen } from './Stats.tsx'
 
 const NOW = T0 + 90 * MIN
@@ -79,6 +81,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  countersStore.set({ list: BUILTIN_COUNTERS })
   // The tab and filter live in a module-level store so they survive navigation. Put them back for the next test.
   const clear = screen.queryByRole('button', { name: 'Clear' }) as HTMLButtonElement | null
   if (clear && !clear.disabled) click(clear)
@@ -324,6 +327,39 @@ describe('Dinner tab', () => {
     expect(row('Counter 3')).toMatch(/0\.2\/min/)
     expect(row('Counter 9')).toContain('No scans yet')
     expect(row('Counter 9')).toContain('Idle')
+  })
+})
+
+describe('counters from the server', () => {
+  it('shows a renamed counter, and drops a retired one that nobody used', () => {
+    const { parties, events } = scenario()
+    load(parties, events)
+    setCounters(BUILTIN_COUNTERS.map((c) => (c.code === 'DINNER-1' ? { ...c, label: 'Main hall' } : c.code === 'DINNER-9' ? { ...c, active: false } : c)))
+    mount()
+    click(tab('Dinner'))
+    click(screen.getByRole('button', { name: 'Show all 9 counters' }))
+    const names = [...document.querySelectorAll('.crow .cl b')].map((b) => b.textContent)
+    expect(names).toContain('Main hall')
+    expect(names).not.toContain('Counter 1')
+    expect(names).not.toContain('Counter 9')
+    expect(names).toHaveLength(9)
+  })
+  it('keeps a retired counter that already has scans, so the totals still add up', () => {
+    const { parties, events } = scenario()
+    load(parties, events)
+    setCounters(BUILTIN_COUNTERS.map((c) => (c.code === 'DINNER-3' ? { ...c, active: false } : c)))
+    mount()
+    click(tab('Dinner'))
+    click(screen.getByRole('button', { name: 'Show all 10 counters' }))
+    expect([...document.querySelectorAll('.crow .cl b')].map((b) => b.textContent)).toContain('Counter 3')
+  })
+  it('shows only the gates the server lists', () => {
+    const { parties, events } = scenario()
+    load(parties, events)
+    setCounters(BUILTIN_COUNTERS.filter((c) => c.code !== 'GATE-2' && c.kind === 'gate' || c.kind === 'dinner').map((c) => (c.code === 'GATE-1' ? { ...c, label: 'Front gate' } : c)))
+    mount()
+    expect(screen.getByText('Front gate')).toBeTruthy()
+    expect(screen.queryByText('Gate desk 2')).toBeNull()
   })
 })
 

@@ -9,5 +9,5 @@ export interface LastAction {
   until: number
 }
 
-/** Cross-screen UI state: account sheet, counter picker, last action (drives the undo toast). */
-export const ui = createStore<{ account: boolean; last: LastAction | null; needRefresh: boolean; updateSW: ((reload?: boolean) => Promise<void>) | null }>({ account: false, last: null, needRefresh: false, updateSW: null })
+/** Cross-screen UI state: account sheet, counter picker, last action (drives the undo toast). dbUpdated: another tab upgraded the local database, so this tab should reload. */
+export const ui = createStore<{ account: boolean; last: LastAction | null; needRefresh: boolean; dbUpdated: boolean; updateSW: ((reload?: boolean) => Promise<void>) | null }>({ account: false, last: null, needRefresh: false, dbUpdated: false, updateSW: null })

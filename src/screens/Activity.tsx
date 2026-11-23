@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { Screen } from '../components/layout.tsx'
 import { UndoSheet } from '../components/UndoSheet.tsx'
 import { Alert, Banner, Btn, Chip, Empty, Icon } from '../components/ui.tsx'
-import { UNDO_WINDOW_S, counterLabel } from '../lib/config.ts'
+import { UNDO_WINDOW_S } from '../lib/config.ts'
+import { counterLabel } from '../lib/counters.ts'
 import { db } from '../lib/db.ts'
 import { fmtTime, mmss } from '../lib/format.ts'
 import { useNow, usePendingIds, useRoster, useSyncStatus } from '../lib/hooks.ts'
@@ -46,7 +47,7 @@ export function ActivityScreen() {
     const party = roster.byId.get(e.partyId)
     const name = party?.leadName ?? 'Unknown guest'
     const v = voids.get(e.id)
-    const st = undoStatus(e, p.session, voided, now)
+    const st = undoStatus(e, p.session, voided, now, p.deviceId)
     const left = undoSecondsLeft(e, now)
     const isServe = e.checkpoint === 'dinner'
     const meta = fmtTime(e.clientAt) + ' · ' + (v ? 'undone: ' + (v.reason ?? '').toLowerCase() : isServe ? counterLabel(e.counter) : 'party of ' + e.qty)

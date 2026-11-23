@@ -1,8 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useLayer } from '../lib/layers.ts'
-import { mmss } from '../lib/format.ts'
+import { mmss, parkingLabel } from '../lib/format.ts'
 import type { SyncStatus } from '../lib/hooks.ts'
+import type { Parking } from '../lib/types.ts'
 import { SPRITE, type IconName } from './sprite.ts'
 
 /** Overlays render at the app root so a fixed-position screen (the camera) can't trap them under the tab bar. */
@@ -31,6 +32,12 @@ export function Logo({ name, height }: { name: 'homecoming' | 'gitam'; height: n
       <img className="logo logo-dark" src={'/logos/' + name + '-cream.png'} height={height} width={Math.round(height * w)} alt={alt} />
     </>
   )
+}
+
+/** The parking choice, shown the same way everywhere. Nothing at all when the guest didn't ask for parking. */
+export function ParkingChip({ parking }: { parking: Parking }) {
+  if (parking === 'none') return null
+  return <Chip icon={parking === 'two_wheeler' ? 'bike' : 'car'}>{parkingLabel(parking)} parking</Chip>
 }
 
 export function Chip({ kind = 'neutral', icon, children, className }: { kind?: 'ok' | 'warn' | 'bad' | 'neutral' | 'outline' | 'tint'; icon?: IconName; children: ReactNode; className?: string }) {
