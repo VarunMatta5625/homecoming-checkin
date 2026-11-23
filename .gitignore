@@ -25,6 +25,7 @@ dist-ssr
 
 # local test passes (QR tokens for the hosted database) and secrets / real attendee data
 test-passes/
+.playwright-mcp/
 .vercel
 .env.local
 .env.*.local
