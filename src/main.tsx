@@ -11,6 +11,7 @@ import { ui } from './lib/ui.ts'
 import './styles/tokens.css'
 import './styles/gh.css'
 import './styles/app.css'
+import './styles/stats.css'
 
 applyAppearance()
 prefs.subscribe(applyAppearance)

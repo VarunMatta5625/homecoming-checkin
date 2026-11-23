@@ -73,7 +73,7 @@ export function SignInScreen() {
       <p className="t-body muted" style={{ margin: 0, maxWidth: 320 }}>Check guests in at the gate and serve dinner, even when the signal drops.</p>
       <div className="stack g2" style={{ width: '100%', marginTop: 28 }}>
         <Btn kind="primary" disabled={busy} onClick={() => void run()}>
-          <span style={{ fontWeight: 800, background: '#fff', color: '#981F2A', width: 24, height: 24, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>G</span>
+          <span style={{ fontWeight: 800, background: '#fff', color: 'var(--btn)', width: 24, height: 24, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>G</span>
           {busy ? 'Signing in…' : 'Continue with Google'}
         </Btn>
         <span className="t-cap muted">Use your GITAM college account</span>

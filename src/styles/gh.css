@@ -43,7 +43,7 @@
 .btn.plain{background:transparent;color:var(--tint)}
 .btn.gray{background:var(--fill);color:var(--text)}
 .btn.destructive{background:var(--bad-bg);color:var(--bad-text)}
-.btn.destructive-fill{background:#C41E14;color:#fff}
+.btn.destructive-fill{background:#C31C13;color:#fff}
 .btn[disabled],.btn.disabled{opacity:.38;cursor:default}
 .btn.sm{height:36px;border-radius:10px;font-size:15px;padding:0 14px;width:auto}
 .btn.auto{width:auto}
@@ -51,11 +51,9 @@
 /* segmented */
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);background:var(--fill);border-radius:12px;padding:3px;height:44px;gap:2px}
 .seg button{border-radius:9px;font-size:15px;font-weight:500;color:var(--text);display:flex;align-items:center;justify-content:center;gap:6px}
-.seg button.on{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
-.dark .seg button.on,[data-theme="dark"] .seg button.on{background:#636366}
-.seg.cam{background:rgba(40,40,44,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.seg button.on{background:var(--seg-on);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}.seg.cam{background:rgba(12,33,28,.62);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .seg.cam button{color:#fff}
-.seg.cam button.on{background:rgba(255,255,255,.95);color:#1C1C1E}
+.seg.cam button.on{background:#FBF0DC;color:#0E1F1A}
 
 /* stepper */
 .stepper{display:inline-flex;align-items:center;background:var(--fill);border-radius:12px;height:44px}
@@ -141,7 +139,7 @@
 .pill.online{background:var(--ok-bg);color:var(--ok-text)}.pill.online .dot{background:var(--ok)}
 .pill.offline{background:var(--fill);color:var(--text)}
 .pill.syncing{background:var(--tint-bg);color:var(--tint)}
-.pill.cam{background:rgba(30,30,32,.62);color:#fff;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.pill.cam{background:rgba(10,30,25,.62);color:#fff;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .pill.cam .dot{background:#30D158}
 .banner{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;font-size:15px;line-height:20px;background:var(--warn-bg);color:var(--text)}
 .banner .i{color:var(--warn-text)}
@@ -150,9 +148,9 @@
 .toast .tbtn{height:40px;padding:0 14px;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;font-size:15px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 
 /* camera */
-.cambtn{width:56px;height:56px;border-radius:28px;background:rgba(40,40,44,.62);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;display:flex;align-items:center;justify-content:center}
-.cambtn.on{background:#fff;color:#1C1C1E}
-.campill{height:48px;border-radius:24px;padding:0 18px;background:rgba(40,40,44,.62);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:17px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.cambtn{width:56px;height:56px;border-radius:28px;background:rgba(12,33,28,.62);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;display:flex;align-items:center;justify-content:center}
+.cambtn.on{background:#FBF0DC;color:#0E1F1A}
+.campill{height:48px;border-radius:24px;padding:0 18px;background:rgba(12,33,28,.62);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:#fff;font-size:17px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
 
 /* misc */
 .card{background:var(--card);border-radius:14px}
