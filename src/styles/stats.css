@@ -22,6 +22,8 @@
 .st-h .sub{font-size:13px;color:var(--text2)}
 .st-seg-s{display:inline-grid;grid-auto-flow:column;background:var(--fill);border-radius:9px;padding:2px;height:32px}
 .st-seg-s button{padding:0 10px;border-radius:7px;font-size:13px;font-weight:500;min-width:44px}
+.st-seg-s button{position:relative}
+.st-seg-s button::after{content:'';position:absolute;inset:-8px -2px}
 .st-seg-s button.on{background:var(--seg-on);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .prow{display:grid;grid-template-columns:52px minmax(0,1fr) 116px;align-items:center;gap:10px;min-height:44px;width:100%;text-align:left}
 .prow .lbl{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -54,10 +56,10 @@
 .kpi{display:flex;flex-direction:column}
 .kpi .n{font-size:28px;line-height:34px;font-weight:700;font-variant-numeric:tabular-nums}
 .kpi .l{font-size:13px;color:var(--text2)}
-.ggrid{overflow-x:auto;margin:0 -16px;padding:0 16px}
+.ggrid{overflow-x:auto;margin:0 -16px;padding:0 16px 0 0}
 .ggrid table{border-collapse:separate;border-spacing:3px;font-variant-numeric:tabular-nums}
 .ggrid th{font-size:13px;font-weight:600;color:var(--text2);height:28px;min-width:44px;text-align:center;padding:0}
-.ggrid th.yr,.ggrid td.yr{position:sticky;left:0;z-index:1;background:var(--card);text-align:left;min-width:46px;font-size:15px;font-weight:600;color:var(--text);padding-right:4px}
+.ggrid th.yr,.ggrid td.yr{position:sticky;left:0;z-index:1;background:var(--card);text-align:left;min-width:62px;font-size:15px;font-weight:600;color:var(--text);padding:0 4px 0 16px}
 .ggrid td{padding:0}
 .gc{width:44px;height:44px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
 .gc.zero{background:var(--track);color:var(--text)}

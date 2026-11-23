@@ -1,4 +1,4 @@
-import type { PartyState } from './state.ts'
+import { liveEvents, type PartyState } from './state.ts'
 import type { Party, ScanEvent } from './types.ts'
 
 /** Stats are computed on the phone from the roster, so they cover only what this phone has heard about. No backend call. */
@@ -132,7 +132,8 @@ export function computeStats(rows: Row[], events: ScanEvent[]): Stats {
     split.arr[2] += hc
   }
   const ids = new Set(rows.map((r) => r.party.id))
-  for (const e of events) if (e.action === 'pass' && e.checkpoint === 'dinner' && e.overrideReason && ids.has(e.partyId)) overrides++
+  // Passes that were undone don't count, same as every other number here.
+  for (const e of liveEvents(events)) if (e.checkpoint === 'dinner' && e.overrideReason && ids.has(e.partyId)) overrides++
 
   return {
     guests: expected,
@@ -269,6 +270,13 @@ export interface CounterRow {
 }
 
 export const ACTIVE_MS = 10 * 60000
+
+/** People counted at each gate. Only the entry that counts for a party (its earliest) is used, so a second scan of the same party at another gate doesn't make the gates add up to more than "arrived". */
+export function gateRows(counters: { code: string; label: string }[], rows: Row[]) {
+  const per = new Map<string, number>()
+  for (const { st } of rows) if (st.entered && st.enteredCounter) per.set(st.enteredCounter, (per.get(st.enteredCounter) ?? 0) + (st.headcount ?? 0))
+  return counters.map((c) => ({ code: c.code, label: c.label, n: per.get(c.code) ?? 0 }))
+}
 
 export function counterRows(counters: { code: string; label: string }[], live: ScanEvent[], checkpoint: 'entry' | 'dinner', now: number): CounterRow[] {
   const per = new Map<string, { n: number; at: number; actor: string; recent: number }>()

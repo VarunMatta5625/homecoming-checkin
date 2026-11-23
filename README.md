@@ -889,7 +889,7 @@ Helpers (private, granted to nobody): `_pass_code_candidate()` builds `GH26-` + 
 
 **[`scripts/test_passes.py`](scripts/test_passes.py)**: ReportLab. `valid` reads a CSV (`pass_code, qr_token, lead_name, ...`) and draws four cards per A4 page, each with a QR of `'GH26:' + qr_token`. `invalid` draws QR codes that must be rejected (random `GH26:` tokens, a URL, a UPI payment string, plain text, a `GH25:` prefix). QR is drawn with `QrCodeWidget` scaled through a `Drawing` transform.
 
-**[CI](.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `supabase/test/harness.sh`.
+**[CI](.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `supabase/test/harness.sh`.
 
 ## 18. Conventions and syntax
 
@@ -911,6 +911,7 @@ npm install
 npm run dev          # http://localhost:5173
 npm run dev:phone    # HTTPS on the LAN so a real phone can use the camera
 npm run typecheck    # tsc -b
+npm test             # vitest: Stats maths and screens (src/**/*.test.ts[x])
 npm run lint         # oxlint
 npm run build        # tsc -b && vite build, output in dist/
 supabase/test/harness.sh   # database checks, needs Docker
