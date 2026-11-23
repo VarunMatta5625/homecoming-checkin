@@ -59,7 +59,7 @@ export function StackBar({ segs, tall, aria }: { segs: Seg[]; tall?: boolean; ar
       {segs.filter((s) => s.n > 0).map((s) => {
         const share = total ? s.n / total : 0
         return (
-          <span key={s.label} className={s.cls + (s.est ? ' seg-est' : '')} style={{ flex: s.n + ' 1 0' }} title={s.label + ' ' + s.n}>
+          <span key={s.label} className={s.cls + (s.est ? ' seg-est' : '')} style={{ flex: s.n + ' 1 0%' }} title={s.label + ' ' + s.n}>
             {share >= 0.3 ? s.label + ' ' + s.n : share >= 0.07 ? s.n : ''}
           </span>
         )
@@ -133,9 +133,11 @@ export function DinnerChart({ bars, max }: { bars: DinnerBar[]; max: number }) {
     <>
       <svg viewBox={'0 0 ' + W + ' ' + (H + 2)} width="100%" role="img" aria-label={'Meals per 30 minutes. ' + last.meals + ' in the latest slot. ' + last.queue + ' checked in and not yet served.'}>
         <line x1="0" x2={W} y1={H} y2={H} stroke="var(--sep)" strokeWidth="1" />
-        {bars.map((b, i) => (
-          <rect key={b.start} x={pad + i * slot + (slot - bw) / 2} y={y(b.meals)} width={bw} height={Math.max(2, H - y(b.meals))} rx="3" fill="var(--arr)" />
-        ))}
+        {bars.map((b, i) => {
+          // At least 2px tall so an empty slot still shows, drawn upward from the axis rather than below it.
+          const h = Math.max(2, H - y(b.meals))
+          return <rect key={b.start} x={pad + i * slot + (slot - bw) / 2} y={H - h} width={bw} height={h} rx="3" fill="var(--arr)" />
+        })}
         <polyline points={pts.map((p) => p.join(',')).join(' ')} fill="none" stroke="var(--text)" strokeWidth="2" strokeDasharray="5 3" />
         {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3.5" fill="var(--card)" stroke="var(--text)" strokeWidth="2" />)}
       </svg>

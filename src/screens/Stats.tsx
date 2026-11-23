@@ -8,7 +8,7 @@ import { ago, fmtTime, plural } from '../lib/format.ts'
 import { useNow, useRoster, useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { liveEvents } from '../lib/state.ts'
-import { arrivalSeries, computeStats, counterRows, dinnerSeries, filterOn, filterOptions, matches, NO_FILTER, pct, type Filter, type Row, type Stats } from '../lib/stats.ts'
+import { arrivalSeries, computeStats, counterRows, dinnerSeries, filterOn, gateRows, filterOptions, matches, NO_FILTER, pct, type Filter, type Row, type Stats } from '../lib/stats.ts'
 import { createStore } from '../lib/store.ts'
 import { kickSync, retryFailed } from '../lib/sync.ts'
 import { Card, Donut, DinnerChart, Grid, GridKey, Legend, Pair, ProgressRow, SortToggle, StackBar, Timeline, type Seg as SegData } from './StatsCharts.tsx'
@@ -92,7 +92,7 @@ export function StatsScreen() {
     )
   }
 
-  const gates = counterRows(COUNTERS.filter((c) => c.kind === 'gate'), live, 'entry', now)
+  const gates = gateRows(COUNTERS.filter((c) => c.kind === 'gate'), rows)
   const tables = counterRows(COUNTERS.filter((c) => c.kind === 'dinner'), live, 'dinner', now)
   const anyActive = tables.some((c) => c.active)
   const alerts: Alert[] = []
@@ -228,7 +228,7 @@ export function StatsScreen() {
   )
 }
 
-function EntryTab({ s, rows, gates, now }: { s: Stats; rows: Row[]; gates: ReturnType<typeof counterRows>; now: number }) {
+function EntryTab({ s, rows, gates, now }: { s: Stats; rows: Row[]; gates: ReturnType<typeof gateRows>; now: number }) {
   const series = useMemo(() => arrivalSeries(rows, now, s.expected, s.arrived), [rows, now, s.expected, s.arrived])
   const [a, sp, ch] = s.split.arr
   const [ea, es, ec] = s.split.exp

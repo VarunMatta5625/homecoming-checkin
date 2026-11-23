@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Btn, Group, Icon, Seg, Sheet } from '../components/ui.tsx'
 import { schoolShort } from '../lib/config.ts'
+import { plural } from '../lib/format.ts'
 import { decadeOf, type Filter } from '../lib/stats.ts'
 
 export interface Options {
@@ -51,24 +52,28 @@ export function FilterSheet({ options, initial, tab: startTab, count, onApply, o
       footer={
         <div style={{ display: 'flex', gap: 8 }}>
           <Btn kind="gray" auto disabled={!f.years.length && !f.schools.length} onClick={() => setF({ years: [], schools: [] })}>Clear</Btn>
-          <Btn onClick={() => onApply(f)}>{'Show ' + n + (n === 1 ? ' guest' : ' guests')}</Btn>
+          <Btn onClick={() => onApply(f)}>{'Show ' + plural(n, 'guest')}</Btn>
         </div>
       }
     >
       <div className="stack g3">
-        <Seg<'year' | 'school'> label="Filter by" value={tab} onChange={setTab} options={[{ value: 'year', label: 'Year' + (f.years.length ? ' · ' + f.years.length : '') }, { value: 'school', label: 'School' + (f.schools.length ? ' · ' + f.schools.length : '') }]} />
+        <div className="px">
+          <Seg<'year' | 'school'> label="Filter by" value={tab} onChange={setTab} options={[{ value: 'year', label: 'Year' + (f.years.length ? ' · ' + f.years.length : '') }, { value: 'school', label: 'School' + (f.schools.length ? ' · ' + f.schools.length : '') }]} />
+        </div>
         {tab === 'year' ? (
           <>
-            <label className="search">
-              <Icon name="search" size="m" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search years, e.g. 09" aria-label="Search years" inputMode="numeric" />
-            </label>
-            <div className="fchips" style={{ padding: 0, overflowX: 'auto' }}>
+            <div className="px">
+              <label className="search">
+                <Icon name="search" size="m" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search years, e.g. 09" aria-label="Search years" inputMode="numeric" />
+              </label>
+            </div>
+            <div className="fchips scroll-x">
               {allDecades.map((d) => (
                 <button key={d} type="button" className={'fchip' + (decadeOn(d) ? ' on' : '')} aria-pressed={decadeOn(d)} onClick={() => toggleDecade(d)}>{d + 's'}</button>
               ))}
             </div>
-            {decades.length === 0 && <span className="t-sub muted">No year matches “{q}”.</span>}
+            {decades.length === 0 && <span className="t-sub muted px">No year matches “{q}”.</span>}
             {decades.map(([d, ys]) => (
               <Group key={d} header={<span style={{ textTransform: 'none' }}>{d + 's'}</span>}>
                 {ys.map((y) => {
@@ -77,7 +82,7 @@ export function FilterSheet({ options, initial, tab: startTab, count, onApply, o
                     <button key={y.year} type="button" className="cell" role="checkbox" aria-checked={on} onClick={() => setF({ ...f, years: toggle(f.years, y.year) })}>
                       <Check on={on} />
                       <span className="grow">{y.year}</span>
-                      <span className="val">{y.guests} guests</span>
+                      <span className="val">{plural(y.guests, 'guest')}</span>
                     </button>
                   )
                 })}
@@ -92,7 +97,7 @@ export function FilterSheet({ options, initial, tab: startTab, count, onApply, o
                 <button key={s.key} type="button" className="cell" role="checkbox" aria-checked={on} onClick={() => setF({ ...f, schools: toggle(f.schools, s.key) })}>
                   <Check on={on} />
                   <span className="grow">{s.key ? schoolShort(s.key) : 'No school given'}</span>
-                  <span className="val">{s.guests} guests</span>
+                  <span className="val">{plural(s.guests, 'guest')}</span>
                 </button>
               )
             })}
