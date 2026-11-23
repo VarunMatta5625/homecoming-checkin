@@ -25,7 +25,7 @@ npm install
 npm run dev              # http://localhost:5173
 npm run dev:phone        # HTTPS on the LAN (iPhone camera)
 npm run build            # static output in dist/, SPA rewrite in vercel.json
-npm test                 # vitest, 207 tests: Stats, undo, counters, local database
+npm test                 # vitest, 208 tests: Stats, undo, counters, local database
 supabase/test/harness.sh # 93 database acceptance checks (needs Docker)
 ```
 

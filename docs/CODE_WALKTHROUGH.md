@@ -77,12 +77,14 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   │   ├── hooks.ts           useRoster, usePartyView, useSyncStatus, usePendingIds, useNow
 │   │   ├── ids.ts             UUIDs, QR tokens, pass codes, QR parsing
 │   │   ├── counter.ts         per-account remembered counter
+│   │   ├── counters.ts        the counters list copied from the server (built-in list as fallback)
 │   │   ├── layers.ts          history-backed sheets
 │   │   ├── undo.ts            undoStatus(), undoSecondsLeft()
 │   │   ├── format.ts          time, names, phone digits, vibration
 │   │   ├── config.ts          LIVE/DEMO, constants, BUILTIN_COUNTERS, SCHOOLS
 │   │   ├── signinReturn.ts    reads the sign-in refusal from the URL
-│   │   └── guestImport.ts     CSV parsing, row checking, template and pass-list CSV
+│   │   ├── guestImport.ts     CSV parsing, row checking, template and pass-list CSV
+│   │   └── stats.ts           the maths behind the Stats screen
 │   ├── backend/
 │   │   ├── types.ts           the Backend interface
 │   │   ├── supabase.ts        implementation over supabase-js
@@ -92,17 +94,19 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   ├── components/            ui.tsx primitives, ResultFlow, UndoSheet, CorrectionSheet,
 │   │                          AccountSheet, layout (TopRow, Banners, TabBar), Qr, Wheel, ActionToast, sprite
 │   ├── screens/               SignIn, Setup, Scan, Search, Register, Activity, Stats, Review,
-│   │                          GuestDetail, Admin (Users, Audit), Import, Privacy
-│   └── styles/                tokens.css (generated), gh.css (components), app.css (layout)
+│   │                          GuestDetail, Admin (Users, Audit), Import, Privacy,
+│   │                          StatsCharts, StatsFilter
+│   ├── test/fixtures.ts       shared builders for the tests (`*.test.ts[x]` sit next to the code they test)
+│   └── styles/                tokens.css (generated), gh.css (components), app.css (layout), stats.css (Stats)
 ├── supabase/
-│   ├── migrations/            7 files, run in order
+│   ├── migrations/            8 files, run in order
 │   ├── setup_all.sql          all migrations + fake data for a new project
 │   ├── seed_admin.sql, seed_dev.sql
 │   └── test/                  harness.sh, stub_auth.sql, checks.sql
 ├── public/guest-list-guide.pdf  printable guide for the import template
 ├── scripts/test_passes.py     printable QR sheets (ReportLab)
 ├── scripts/make_guest_guide.py  generates the PDF guide
-└── .github/workflows/ci.yml   lint, typecheck, build, database checks
+└── .github/workflows/ci.yml   lint, typecheck, tests, build, database checks
 ```
 
 ## 3. Boot and routing
@@ -911,7 +915,7 @@ npm install
 npm run dev          # http://localhost:5173
 npm run dev:phone    # HTTPS on the LAN so a real phone can use the camera
 npm run typecheck    # tsc -b
-npm test             # vitest: Stats maths and screens (src/**/*.test.ts[x])
+npm test             # vitest: Stats, undo rules, counters, local database (src/**/*.test.ts[x])
 npm run lint         # oxlint
 npm run build        # tsc -b && vite build, output in dist/
 supabase/test/harness.sh   # database checks, needs Docker
