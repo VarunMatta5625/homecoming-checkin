@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
-import { counterLabel } from '../lib/config.ts'
+import { counterLabel } from '../lib/counters.ts'
 import { pendingCount, startOver } from '../lib/actions.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
@@ -31,13 +31,18 @@ export function Banners({ className }: { className?: string }) {
   const p = prefs.use()
   const status = useSyncStatus()
   const reauthError = useFinishReauth()
-  const { needRefresh, updateSW } = ui.use()
+  const { needRefresh, updateSW, dbUpdated } = ui.use()
   return (
     <div className={className}>
       {p.sessionExpired && (
         <Banner kind="warn" icon="lock" title="Please sign in again" action={<SignInAgain />}>
           Your session ended. {status.pending ? 'Your ' + status.pending + ' changes are safe on this phone and will sync after you sign in.' : 'You can keep scanning offline.'}
           {reauthError && <strong> {reauthError} To use another account, sign out from the Account menu.</strong>}
+        </Banner>
+      )}
+      {dbUpdated && (
+        <Banner kind="warn" icon="refresh" title="Reload this page" action={<Btn kind="secondary" sm onClick={() => location.reload()}>Reload</Btn>}>
+          The app was updated in another window. Reload here too. Nothing on this phone is lost.
         </Banner>
       )}
       {needRefresh && updateSW && status.pending === 0 && (

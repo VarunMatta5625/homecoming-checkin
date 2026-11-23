@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Screen } from '../components/layout.tsx'
 import { Banner, Btn, Empty, Icon, Seg } from '../components/ui.tsx'
 import type { IconName } from '../components/sprite.ts'
-import { COUNTERS, schoolShort } from '../lib/config.ts'
+import { schoolShort } from '../lib/config.ts'
+import { useCounters } from '../lib/counters.ts'
 import { ago, fmtTime, plural } from '../lib/format.ts'
 import { useNow, useRoster, useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
@@ -36,6 +37,7 @@ export function StatsScreen() {
   const roster = useRoster()
   const navigate = useNavigate()
   const status = useSyncStatus()
+  const counters = useCounters()
   const lastSyncAt = prefs.use().lastSyncAt
   const now = useNow(30000)
   const { tab, filter } = view.use()
@@ -92,8 +94,10 @@ export function StatsScreen() {
     )
   }
 
-  const gates = gateRows(COUNTERS.filter((c) => c.kind === 'gate'), rows)
-  const tables = counterRows(COUNTERS.filter((c) => c.kind === 'dinner'), live, 'dinner', now)
+  // A retired counter drops off the list, unless it already has scans that count in the totals.
+  const shown = (kind: 'gate' | 'dinner', used: (code: string) => boolean) => counters.filter((c) => c.kind === kind && (c.active || used(c.code)))
+  const gates = gateRows(shown('gate', (code) => rows.some((r) => r.st.enteredCounter === code)), rows)
+  const tables = counterRows(shown('dinner', (code) => live.some((e) => e.checkpoint === 'dinner' && e.counter === code)), live, 'dinner', now)
   const anyActive = tables.some((c) => c.active)
   const alerts: Alert[] = []
   if (anyActive) {

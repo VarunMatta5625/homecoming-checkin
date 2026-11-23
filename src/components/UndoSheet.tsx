@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { REASONS_UNDO, counterLabel } from '../lib/config.ts'
+import { REASONS_UNDO } from '../lib/config.ts'
+import { counterLabel } from '../lib/counters.ts'
 import { fmtTime } from '../lib/format.ts'
 import { voidEvent } from '../lib/actions.ts'
 import type { ScanEvent } from '../lib/types.ts'

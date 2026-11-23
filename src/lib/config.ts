@@ -15,15 +15,16 @@ export interface Counter {
   code: string
   label: string
   kind: 'gate' | 'dinner'
+  /** Retired counters can't be picked but keep their name on old scans. */
+  active: boolean
 }
 
-export const COUNTERS: Counter[] = [
-  { code: 'GATE-1', label: 'Gate desk 1', kind: 'gate' },
-  { code: 'GATE-2', label: 'Gate desk 2', kind: 'gate' },
-  ...Array.from({ length: 10 }, (_, i): Counter => ({ code: 'DINNER-' + (i + 1), label: 'Counter ' + (i + 1), kind: 'dinner' })),
+/** Used until the phone has the server's list (see lib/counters.ts). Matches the rows in the counters table. */
+export const BUILTIN_COUNTERS: Counter[] = [
+  { code: 'GATE-1', label: 'Gate desk 1', kind: 'gate', active: true },
+  { code: 'GATE-2', label: 'Gate desk 2', kind: 'gate', active: true },
+  ...Array.from({ length: 10 }, (_, i): Counter => ({ code: 'DINNER-' + (i + 1), label: 'Counter ' + (i + 1), kind: 'dinner', active: true })),
 ]
-
-export const counterLabel = (code: string) => COUNTERS.find((c) => c.code === code)?.label ?? code
 
 export const SCHOOLS = [
   'School of Technology',

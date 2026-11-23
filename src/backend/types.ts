@@ -1,4 +1,5 @@
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
+import type { Counter } from '../lib/config.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session, Role } from '../lib/types.ts'
 
 export type SignInResult = { session: Session } | { rejectedEmail: string } | { error: string }
@@ -45,6 +46,8 @@ export interface Backend {
   fetchChanges?(from: Cursors): Promise<Snapshot>
   pushBatch(items: OutboxItem[]): Promise<PushResult[]>
   heartbeat?(info: { deviceId: string; counter: string | null; pending: number; appVersion: string }): Promise<void>
+  /** The counters table (gates and dinner counters, active or retired). Demo mode has none: the built-in list applies. */
+  listCounters?(): Promise<Counter[]>
   /** True when a real request succeeds. navigator.onLine alone is not trusted. */
   ping(): Promise<boolean>
   listUsers(): Promise<AdminUser[]>

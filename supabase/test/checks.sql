@@ -282,3 +282,64 @@ begin
   perform _ok((select count(*) from audit_log where action = 'read' and table_name = 'party_contacts' and reason = 'Pass list export') = 1, 'an export is recorded in the audit log');
   raise notice 'IMPORT CHECKS PASSED';
 end $t$;
+
+-- Undo without trusting the phone's clock, and heartbeats that can't overwrite another user's row (migration 8)
+do $t$
+declare
+  pa uuid; d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid(); dx uuid := gen_random_uuid();
+  ev jsonb; r jsonb; vo jsonb;
+begin
+  select id into pa from parties where deleted_at is null order by lead_name limit 1;
+  vo := '{"action":"void","reason":"Tapped by mistake"}';
+
+  -- Same phone, undo within the window while offline: accepted even though the scan was received long ago.
+  perform _as('volunteer1@homecoming.test');
+  ev := _ev(pa, 'dinner', 1, null, d1, 300);
+  perform push_batch(jsonb_build_array(ev));
+  perform _back();
+  set local session_replication_role = replica;      -- the log is append-only; the test needs an old received_at
+  update scan_events set received_at = now() - interval '10 minutes' where id = (ev->'payload'->>'id')::uuid;
+  set local session_replication_role = origin;
+  perform _as('volunteer1@homecoming.test');
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 240, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  perform _ok(r->0->>'status' = 'accepted', 'an offline undo from the same phone is accepted when it syncs late');
+
+  -- An undo dated before the scan (backdated clock) is refused.
+  ev := _ev(pa, 'dinner', 1, null, d1, 10);
+  perform push_batch(jsonb_build_array(ev));
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 120, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%before the scan%', 'an undo dated before its scan is rejected');
+
+  -- Another phone, scan only just received: accepted. The server's clock decides.
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  perform _ok(r->0->>'status' = 'accepted', 'an undo from another phone is accepted while the scan is fresh');
+  perform _back();
+
+  -- Another phone, scan received long ago: refused, whatever the undo's own timestamp says.
+  perform _as('volunteer1@homecoming.test');
+  ev := _ev(pa, 'dinner', 1, null, d1, 0);
+  perform push_batch(jsonb_build_array(ev));
+  perform _back();
+  set local session_replication_role = replica;
+  update scan_events set received_at = now() - interval '10 minutes' where id = (ev->'payload'->>'id')::uuid;
+  set local session_replication_role = origin;
+  perform _as('volunteer1@homecoming.test');
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%window%', 'an undo from another phone is rejected once the scan is old, whatever its timestamp says');
+  perform _back();
+
+  -- Heartbeats: each user writes only their own row for a device id.
+  perform _as('volunteer1@homecoming.test');
+  perform device_heartbeat(dx, 'DINNER-1', 0, 'one', now());
+  perform _back();
+  perform _as('volunteer2@homecoming.test');
+  perform device_heartbeat(dx, 'DINNER-9', 5, 'two', now());
+  perform _back();
+  perform _ok((select counter from device_status where device_id = dx and user_id = (select id from staff_users where email = 'volunteer1@homecoming.test')) = 'DINNER-1', 'another user''s heartbeat does not overwrite the first user''s row');
+  perform _ok((select count(*) from device_status where device_id = dx) = 2, 'each user gets their own row for a shared device id');
+  perform _as('volunteer1@homecoming.test');
+  perform device_heartbeat(dx, 'DINNER-2', 1, 'one', now());
+  perform _back();
+  perform _ok((select counter from device_status where device_id = dx and user_id = (select id from staff_users where email = 'volunteer1@homecoming.test')) = 'DINNER-2', 'a user''s own heartbeat still updates their row');
+  raise notice 'MIGRATION 8 CHECKS PASSED';
+end $t$;

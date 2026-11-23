@@ -1,4 +1,4 @@
-import { COUNTERS } from './config.ts'
+import { getCounters } from './counters.ts'
 import { prefs } from './prefs.ts'
 import { createStore } from './store.ts'
 
@@ -10,14 +10,14 @@ const saved = createStore<{ byAccount: Record<string, string> }>({ byAccount: {}
 
 /** Work at this counter (and in its mode), and make it this account's default for next time. */
 export function applyCounter(code: string) {
-  const kind = COUNTERS.find((c) => c.code === code)?.kind
+  const kind = getCounters().find((c) => c.code === code)?.kind
   prefs.set({ counter: code, mode: kind === 'gate' ? 'entry' : 'dinner' })
   const actorId = prefs.get().session?.actorId
   if (actorId) saved.set({ byAccount: { ...saved.get().byAccount, [actorId]: code } })
 }
 
-/** This account's counter from last time, if it still exists. */
+/** This account's counter from last time, if it still exists and hasn’t been retired. */
 export function savedCounter(actorId: string | undefined) {
   const code = actorId ? saved.get().byAccount[actorId] : undefined
-  return code && COUNTERS.some((c) => c.code === code) ? code : null
+  return code && getCounters().some((c) => c.code === code && c.active) ? code : null
 }

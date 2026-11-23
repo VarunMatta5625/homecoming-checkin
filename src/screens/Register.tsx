@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Qr } from '../components/Qr.tsx'
 import { Screen } from '../components/layout.tsx'
-import { ActionSheet, Btn, Chip, Group, Icon, Seg, Sheet, Stepper, Banner } from '../components/ui.tsx'
+import { ActionSheet, Btn, Chip, Group, Icon, ParkingChip, Seg, Sheet, Stepper, Banner } from '../components/ui.tsx'
 import { Wheel } from '../components/Wheel.tsx'
 import { EVENT_NAME, MAX_BATCH_YEAR, MAX_CHILDREN, MIN_BATCH_YEAR, SCHOOLS } from '../lib/config.ts'
 import { findPossibleDuplicate, registerOnSpot } from '../lib/actions.ts'
-import { firstName, fmtTime, mobileDigits, parkingLabel, partyDesc } from '../lib/format.ts'
+import { firstName, fmtTime, mobileDigits, partyDesc } from '../lib/format.ts'
 import { useSyncStatus } from '../lib/hooks.ts'
 import { qrPayload } from '../lib/ids.ts'
 import { leaveLayers } from '../lib/layers.ts'
@@ -259,7 +259,7 @@ function PassView({ party, at, offline, onAgain }: { party: Party; at: number; o
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
           <Chip icon="users">Party of {party.partySize}</Chip>
-          {party.parking !== 'none' && <Chip icon={party.parking === 'two_wheeler' ? 'bike' : 'car'}>{parkingLabel(party.parking)} parking</Chip>}
+          <ParkingChip parking={party.parking} />
         </div>
         <span className="t-cap muted center">{partyDesc(party.spouse, party.children)}</span>
       </div>

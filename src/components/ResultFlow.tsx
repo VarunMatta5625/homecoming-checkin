@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UNDO_WINDOW_S, counterLabel } from '../lib/config.ts'
+import { UNDO_WINDOW_S } from '../lib/config.ts'
+import { counterLabel } from '../lib/counters.ts'
 import { ago, firstName, fmtTime, mmss, partyDesc, plural, vibrate } from '../lib/format.ts'
 import { checkIn, serveDinner, shortName } from '../lib/actions.ts'
 import { usePartyView, useNow } from '../lib/hooks.ts'

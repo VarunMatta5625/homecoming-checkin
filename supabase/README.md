@@ -13,9 +13,10 @@ Database for the check-in app: schema, row-level security and the RPCs the app c
 | `migrations/20261122000005_lock_down.sql` | Signed-out users can run no functions; contacts and `parties.notes` readable only through audited functions; a void must target a plain scan of the same guest (existing projects: run just this file) |
 | `migrations/20261122000006_signup_hook.sql` | `hook_before_user_created`: only emails on the `staff_users` list can create an account. Needs one dashboard step, see below (existing projects: run just this file) |
 | `migrations/20261122000007_guest_import.sql` | `admin_import_guests` (load a whole guest list in one go, Add or Replace) and `admin_export_passes` (pass codes and contacts, audited). Admin only (existing projects: run just this file) |
+| `migrations/20261122000008_undo_and_heartbeat.sql` | A volunteer's undo is refused if dated before its scan, and an undo from a different phone than the scan is judged by the server's clock; `device_heartbeat` rows are keyed on device and user so one user can't overwrite another's (existing projects: run just this file; the app works with or without it) |
 | `seed_admin.sql` | Your first admin (edit the email first) |
 | `seed_dev.sql` | Fake test accounts and 120 fake parties. Testing only |
-| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 86 acceptance checks |
+| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 93 acceptance checks |
 
 When you add a function, end its migration with `revoke execute on function ... from public, anon;` and grant it to `authenticated` by name. Postgres lets everyone run a new function by default; the checks fail if one is open to the signed-out role.
 

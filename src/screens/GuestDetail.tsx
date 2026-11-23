@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CorrectionSheet } from '../components/CorrectionSheet.tsx'
-import { Empty, Btn, Chip, Group, Icon, NavBar } from '../components/ui.tsx'
-import { counterLabel } from '../lib/config.ts'
-import { fmtTime, parkingLabel } from '../lib/format.ts'
+import { Empty, Btn, Chip, Group, Icon, NavBar, ParkingChip } from '../components/ui.tsx'
+import { counterLabel } from '../lib/counters.ts'
+import { fmtTime } from '../lib/format.ts'
 import { usePartyView } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { hasRole, type ScanEvent } from '../lib/types.ts'
@@ -61,7 +61,7 @@ export function GuestDetailScreen() {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
           <Chip icon="users">{party.spouse === 'maybe' ? 'Party of up to ' + party.partySize : 'Party of ' + party.partySize}</Chip>
           {party.spouse === 'maybe' && <Chip icon="help">Spouse: Maybe</Chip>}
-          <Chip icon={party.parking === 'two_wheeler' ? 'bike' : 'car'}>{parkingLabel(party.parking)}</Chip>
+          <ParkingChip parking={party.parking} />
           <Chip icon="phone" className="mono">••••{party.mobileLast4}</Chip>
           {party.source === 'onspot' && <Chip kind="tint" icon="user-plus">On-spot</Chip>}
           {state.needsReview && <Chip kind="warn" icon="flag">Needs review</Chip>}

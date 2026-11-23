@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CounterPicker } from '../components/AccountSheet.tsx'
 import { Btn, Empty, Icon, Logo } from '../components/ui.tsx'
-import { counterLabel } from '../lib/config.ts'
+import { counterLabel } from '../lib/counters.ts'
 import { downloadRoster } from '../lib/actions.ts'
 import { applyCounter, savedCounter } from '../lib/counter.ts'
 import { db } from '../lib/db.ts'

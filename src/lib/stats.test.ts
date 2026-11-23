@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ev, MIN, party, resetIds, rowsOf, T0, voidOf } from '../test/fixtures.ts'
-import { COUNTERS } from './config.ts'
+import { BUILTIN_COUNTERS as COUNTERS } from './config.ts'
 import { arrivalSeries, bucket, cellKey, computeStats, counterRows, decadeOf, dinnerSeries, filterOn, filterOptions, gateRows, isSmall, matches, NO_FILTER, pct, schoolCode, schoolKey } from './stats.ts'
 import { liveEvents } from './state.ts'
 

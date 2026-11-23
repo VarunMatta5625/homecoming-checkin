@@ -10,7 +10,7 @@ This document explains **how the code works**: architecture, data model, every m
 ![Vite 8](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![Dexie](https://img.shields.io/badge/Dexie-IndexedDB-orange?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
-![DB checks](https://img.shields.io/badge/database%20checks-86-30d158?style=flat-square)
+![DB checks](https://img.shields.io/badge/database%20checks-93-30d158?style=flat-square)
 
 [Architecture](#1-architecture) · [Repo map](#2-repo-map) · [Boot](#3-boot-and-routing) · [Types](#4-core-types) · [Stores](#5-stores-prefs-net-ui) · [Local DB](#6-local-database-dexie) · [Derived state](#7-derived-state) · [Writes](#8-writes-actionsts) · [Sync](#9-sync-syncts) · [Backend seam](#10-the-backend-seam) · [Auth](#11-auth-flow) · [Helpers](#12-small-modules) · [UI](#13-ui-layer) · [Screens](#14-screens) · [Build](#15-build-pwa-and-hosting) · [SQL](#16-the-database) · [Tests and CI](#17-tests-scripts-and-ci) · [Conventions](#18-conventions-and-syntax) · [Run](#19-run-and-deploy)
 
@@ -80,7 +80,7 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   │   ├── layers.ts          history-backed sheets
 │   │   ├── undo.ts            undoStatus(), undoSecondsLeft()
 │   │   ├── format.ts          time, names, phone digits, vibration
-│   │   ├── config.ts          LIVE/DEMO, constants, COUNTERS, SCHOOLS
+│   │   ├── config.ts          LIVE/DEMO, constants, BUILTIN_COUNTERS, SCHOOLS
 │   │   ├── signinReturn.ts    reads the sign-in refusal from the URL
 │   │   └── guestImport.ts     CSV parsing, row checking, template and pass-list CSV
 │   ├── backend/
@@ -275,7 +275,7 @@ class AppDB extends Dexie {
 }
 ```
 
-The strings are Dexie **index specs**: the first name is the primary key; `&` means unique; `[a+b]` is a compound index. So a QR scan is an indexed lookup (`where('qrToken').equals(token)`), a typed pass code is another (`passCode`), and `events.where('partyId')` gets one party's history without a scan. Only indexed fields are listed; other fields are stored but not queryable. **The schema is at version 1**: changing stored fields requires `this.version(2)` with an upgrade function.
+The strings are Dexie **index specs**: the first name is the primary key; `&` means unique; `[a+b]` is a compound index. So a QR scan is an indexed lookup (`where('qrToken').equals(token)`), a typed pass code is another (`passCode`), and `events.where('partyId')` gets one party's history without a scan. Only indexed fields are listed; other fields are stored but not queryable. **The schema is at version 1** (the stores live in the exported `STORES_V1`): never edit a shipped version. A change adds `this.version(2).stores({ ...STORES_V1, ... })` (plus an `upgrade` function if values must change), and `db.test.ts` checks that an upgrade keeps rows, unsynced scans included. When another tab upgrades the database, Dexie closes this tab's connection and the app shows a "Reload this page" banner (`ui.dbUpdated`).
 
 `clearLocalData()` empties all three tables in one transaction. `finishWipe()` is the sign-out wipe:
 
@@ -454,7 +454,7 @@ The cursors are the largest `change_seq` (parties) and `seq` (events) already re
 ### 9.3 heartbeat, connectivity, scheduler
 
 - `heartbeat()` calls `device_heartbeat` with `deviceId`, counter, `db.outbox.count()` and `APP_VERSION`; failures are ignored.
-- `checkOnline()` calls `backend.ping()`, sets `net.online`, and if online runs `syncCycle()` = `flush()`, `pull()`, `heartbeat()`. `navigator.onLine` is **not** trusted: the Supabase `ping` does `fetch(url + '/auth/v1/health', { signal: AbortSignal.timeout(5000), cache: 'no-store' })`.
+- `checkOnline()` calls `backend.ping()`, sets `net.online`, and if online runs `syncCycle()` = `flush()`, `pull()`, `heartbeat()`, `refreshCounters()` (at most every ten minutes). `navigator.onLine` is **not** trusted: the Supabase `ping` does `fetch(url + '/auth/v1/health', { signal: AbortSignal.timeout(5000), cache: 'no-store' })`.
 - `startSync()` runs once and registers: `online`/`offline` events, `visibilitychange` (when visible), `setInterval(check, 15000)`, and an immediate check. It also calls `finishWipe()` to retry a wipe left from a previous run.
 
 ## 10. The backend seam
@@ -480,7 +480,7 @@ export interface Backend {
 export type SignInResult = { session: Session } | { rejectedEmail: string } | { error: string }
 ```
 
-Optional methods (`resume`, `signInDemo`, `fetchChanges`, `heartbeat`) are called with `?.` by the app, so the demo backend simply omits what a fake has no use for. `backend/index.ts` is one line: `export const backend: Backend = LIVE ? supabaseBackend : demoBackend`.
+Optional methods (`resume`, `signInDemo`, `fetchChanges`, `heartbeat`, `listCounters`) are called with `?.` by the app, so the demo backend simply omits what a fake has no use for. `backend/index.ts` is one line: `export const backend: Backend = LIVE ? supabaseBackend : demoBackend`.
 
 ### 10.1 [`src/backend/supabase.ts`](src/backend/supabase.ts)
 
@@ -491,7 +491,7 @@ Optional methods (`resume`, `signInDemo`, `fetchChanges`, `heartbeat`) are calle
 
 **Row mapping.** The database speaks snake_case; the app speaks camelCase. `toParty` and `toEvent` convert (`pass_code` to `passCode`, `client_at` to `Number(clientAt)`, and a derived `nameLc`). `mobile_last4 ?? ''` guards nulls.
 
-**Errors.** `fail(error)` throws an `Error`, and first flags `sessionExpired` for Postgres `42501` (insufficient privilege, what `_require_staff` raises), PostgREST `PGRST301`, or HTTP 401/403. Every RPC wrapper routes errors through it, except `saveUser`, which throws directly (a known gap).
+**Errors.** `fail(error)` throws an `Error`, and first flags `sessionExpired` for Postgres `42501` (insufficient privilege, what `_require_staff` raises), PostgREST `PGRST301`, or HTTP 401/403. Every RPC wrapper routes errors through it.
 
 **Paging.**
 
@@ -570,7 +570,7 @@ sequenceDiagram
 
 ### 12.2 [`config.ts`](src/lib/config.ts)
 
-`LIVE = !!SUPABASE_URL && !!SUPABASE_KEY && VITE_DEMO !== 'true'`; `DEMO = !LIVE`. Also `APP_VERSION` (from the Vite `define`), `UNDO_WINDOW_S = 60`, batch-year bounds, `MAX_CHILDREN`, the hard-coded `COUNTERS` array (`GATE-1..2`, `DINNER-1..10`, each with a `kind`), `SCHOOLS`, and the reason lists for undo and correction. `counterLabel(code)` falls back to the code itself for unknown counters.
+`LIVE = !!SUPABASE_URL && !!SUPABASE_KEY && VITE_DEMO !== 'true'`; `DEMO = !LIVE`. Also `APP_VERSION` (from the Vite `define`), `UNDO_WINDOW_S = 60`, batch-year bounds, `MAX_CHILDREN`, `BUILTIN_COUNTERS` (`GATE-1..2`, `DINNER-1..10`, each with a `kind` and `active`; the fallback until a phone has the server's list), `SCHOOLS`, and the reason lists for undo and correction. [`lib/counters.ts`](src/lib/counters.ts) holds the live list in a persisted store: `sync.ts` copies the `counters` table every ten minutes through `backend.listCounters()`, `useCounters()` / `activeCounters()` feed the picker and Stats, and `counterLabel(code)` falls back to the code itself for unknown counters.
 
 ### 12.3 [`undo.ts`](src/lib/undo.ts)
 
@@ -819,7 +819,7 @@ Every RPC is `SECURITY DEFINER` with a fixed `search_path` and identifies the ca
 | `_push_party(me, p)` | `duplicate` if the id exists; normalises the mobile to `+91` + 10 digits (raises `'Mobile needs 10 digits'`); looks up the same mobile in `party_contacts` and, if found, sets `possible_duplicate_of` (flags, never merges); inserts the party (`source 'onspot'`) and its contact |
 | `_push_event(me, p)` | the rules of section 16.5 |
 | `push_batch(items)` | takes `pg_advisory_xact_lock(1)`, loops over the items; each runs in its own `begin ... exception when others then ... end` block, so one failure becomes `{status:'rejected', reason: sqlerrm}` and the rest continue. Returns one `{id, status, ...}` per item |
-| `device_heartbeat(...)` | upsert into `device_status`, including `clock_offset_ms = now() - p_client_now` |
+| `device_heartbeat(...)` | upsert into `device_status` keyed on (device, user), including `clock_offset_ms = now() - p_client_now`; a user only ever writes their own row |
 | `get_party_contact(id)` | staff and up; **inserts an audit row** (`action 'read'`) then returns mobile and email |
 | `resolve_review`, `update_party` | staff and up; `update_party` requires a reason, sets `app.reason` (so the audit trigger records it), and patches columns with `coalesce(p_patch->>'x', x)` |
 | `admin_import_guests`, `admin_export_passes` (migration `…07`) | admin only; see [16.7](#167-guest-import-07) |
@@ -883,7 +883,7 @@ Helpers (private, granted to nobody): `_pass_code_candidate()` builds `GH26-` + 
 
 **[`supabase/test/harness.sh`](supabase/test/harness.sh)**: starts `postgres:16` in Docker, loads [`stub_auth.sql`](supabase/test/stub_auth.sql) (a fake `auth.users`, an `auth.uid()` that reads `request.jwt.claim.sub`, and the `anon`, `authenticated`, `supabase_auth_admin` roles), applies every migration and `seed_dev.sql`, runs [`checks.sql`](supabase/test/checks.sql), and removes the container on exit (`trap`). `set -euo pipefail` plus `psql -v ON_ERROR_STOP=1` make any failure fatal.
 
-**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message). Each check runs **as a real role** against the real objects. 86 checks in total (the import adds validation, replace refusals, duplicate flagging, audit and grant checks). They cover access by role, RLS, column and function grants, idempotent replays, servings from two devices adding, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
+**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message). Each check runs **as a real role** against the real objects. 93 checks in total (the import adds validation, replace refusals, duplicate flagging, audit and grant checks). They cover access by role, RLS, column and function grants, idempotent replays, servings from two devices adding, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
 
 **[`scripts/make_guest_guide.py`](scripts/make_guest_guide.py)** generates `public/guest-list-guide.pdf` (the printable column guide for organisers). Keep its column table in step with `FIELDS`.
 

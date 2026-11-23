@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { SUPABASE_KEY, SUPABASE_URL } from '../lib/config.ts'
+import { SUPABASE_KEY, SUPABASE_URL, type Counter } from '../lib/config.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
@@ -157,6 +157,12 @@ export const supabaseBackend: Backend = {
     })
   },
 
+  async listCounters() {
+    const { data, error } = await sb().from('counters').select('code,label,kind,active')
+    if (error) fail(error)
+    return (data as Row[]).map((r): Counter => ({ code: String(r.code), label: String(r.label), kind: r.kind as Counter['kind'], active: r.active !== false }))
+  },
+
   async ping() {
     if (!navigator.onLine) return false
     try {
@@ -175,7 +181,7 @@ export const supabaseBackend: Backend = {
 
   async saveUser(u) {
     const { error } = await sb().rpc('admin_set_user', { p_email: u.email, p_name: u.name, p_role: u.role, p_active: u.active })
-    if (error) throw new Error(error.message)
+    if (error) fail(error)
   },
 
   async importGuests(rows: GuestRow[], opts) {
