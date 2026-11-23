@@ -116,7 +116,7 @@ See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). A
 - Replace soft-deletes the current guests (`deleted_at`, so phones learn through the normal change cursor). It is refused when `event_settings.is_live` is true or any `scan_events` row exists. Add stays allowed when live (late registrations).
 - `admin_export_passes()` returns every current guest with contacts and writes an audit_log read row. The CSV's first twelve columns match what `scripts/test_passes.py` reads.
 - Timing in the Docker harness: 5000 guests in about 0.3 s. A row-by-row loop with lookups took 8.8 s (stale plan statistics on fresh tables), too close to the hosted request limit.
-- Limits: 10,000 guests per file; the "test activity reset" button is still to build (README has the SQL).
+- Limits: 10,000 guests per file; the "test activity reset" button is still to build (`supabase/README.md` has the SQL).
 
 ## Code review notes (22 Nov 2026, left for later)
 
@@ -161,8 +161,7 @@ To reset only the test scans later, see "Reset test activity" in `supabase/READM
 - Supabase Auth, URL Configuration: set Site URL to the Vercel address and add `https://<app>.vercel.app/**` to Redirect URLs (keep the localhost entries for development).
 - Vercel project settings, Production and Preview: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only. They are baked in at build time, so redeploy after changing them. The build fails if either is missing.
 - Test on the production domain: preview deployments get random URLs that are not in Supabase's Redirect URLs.
-- **Remember:** publish the Google consent screen (Google Auth Platform, Audience, Publish app; Testing to In production) after the Vercel deploy works and before real volunteers sign in. Until then only listed test users (max 100) can sign in. After publishing, people are added only through the app's Users screen. Step-by-step is in `README.md`.
-- Optional: turn off the Email provider in Supabase Auth so Google is the only way in.
+- **Remember:** publish the Google consent screen (Google Auth Platform, Audience, Publish app; Testing to In production) after the Vercel deploy works and before real volunteers sign in. Until then only listed test users (max 100) can sign in. After publishing, people are added only through the app's Users screen.- Optional: turn off the Email provider in Supabase Auth so Google is the only way in.
 
 ## Event timeline (from the spec)
 
