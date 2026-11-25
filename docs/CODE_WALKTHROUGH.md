@@ -772,7 +772,7 @@ The screen has a sticky header with three tiles (On campus now, percent arrived,
 
 ## 16. The database
 
-Eight migrations in [`supabase/migrations/`](../supabase/migrations), applied in filename order. [`setup_all.sql`](../supabase/setup_all.sql) is all of them plus fake seed data. Migration `…07` is covered in [16.7](#167-guest-import-07) and migration `…08` in [16.8](#168-undo-clock-rules-and-heartbeat-08).
+Eleven migrations in [`supabase/migrations/`](../supabase/migrations), applied in filename order. [`setup_all.sql`](../supabase/setup_all.sql) is all of them plus fake seed data. Migration `…07` is covered in [16.7](#167-guest-import-07) and migration `…08` in [16.8](#168-undo-clock-rules-and-heartbeat-08).
 
 ### 16.1 Schema (`…01`)
 

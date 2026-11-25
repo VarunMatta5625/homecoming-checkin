@@ -79,7 +79,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Pass codes are `GH26-` plus 5 characters (spec alphabet); the design mock showed 4.
 - Tabs follow the design (Scan, Search, Register, Activity, plus Stats for staff). Admin screens open from the Account sheet.
 - Entry headcount is editable (stepper, defaults to the party size) per spec 15; the design shows fixed buttons only.
-- Counters are hardcoded in `src/lib/config.ts` and seeded in the `counters` table (Gate desk 1 to 2; the table still holds Dinner counter 1 to 10 from the earlier version, which the app ignores and migration 9 switches off).
+- Counters live in the `counters` table (Gate desk 1 to 2); phones copy it every ten minutes and fall back to `BUILTIN_COUNTERS` in `src/lib/config.ts` until the first copy. The table still holds Dinner counter 1 to 10 from the earlier version, which the app ignores and migration 9 switches off.
 - Blocked scans are not stored (events are real-world facts only), so Activity does not list them.
 - Stats "Active/Quiet" chips are derived from events. Stats and the needs-review list are derived locally; the `stats_*` and `review_queue` RPCs are not built.
 - UI prefs and the session live in localStorage, not a Dexie `meta` table.
