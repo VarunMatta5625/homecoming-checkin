@@ -10,7 +10,7 @@ This document explains **how the code works**: architecture, data model, every m
 ![Vite 8](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![Dexie](https://img.shields.io/badge/Dexie-IndexedDB-orange?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
-![DB checks](https://img.shields.io/badge/database%20checks-99-30d158?style=flat-square)
+![DB checks](https://img.shields.io/badge/database%20checks-119-30d158?style=flat-square)
 
 [Architecture](#1-architecture) · [Repo map](#2-repo-map) · [Boot](#3-boot-and-routing) · [Types](#4-core-types) · [Stores](#5-stores-prefs-net-ui) · [Local DB](#6-local-database-dexie) · [Derived state](#7-derived-state) · [Writes](#8-writes-actionsts) · [Sync](#9-sync-syncts) · [Backend seam](#10-the-backend-seam) · [Auth](#11-auth-flow) · [Helpers](#12-small-modules) · [UI](#13-ui-layer) · [Screens](#14-screens) · [Build](#15-build-pwa-and-hosting) · [SQL](#16-the-database) · [Tests and CI](#17-tests-scripts-and-ci) · [Conventions](#18-conventions-and-syntax) · [Run](#19-run-and-deploy)
 
@@ -170,7 +170,7 @@ const staff = hasRole(role, 'staff'); const admin = hasRole(role, 'admin')
   <Route path="/scan" .../> <Route path="/search" .../> <Route path="/register" .../>
   <Route path="/activity" .../> <Route path="/guest/:id" .../>
   {staff && <Route path="/stats" .../>}  {staff && <Route path="/stats/review" .../>}
-  {admin && <Route path="/admin/users" .../>}  {admin && <Route path="/admin/import" .../>}  {admin && <Route path="/admin/audit" .../>}
+  {admin && <Route path="/admin/users" .../>}  {admin && <Route path="/admin/import" .../>}  {admin && <Route path="/admin/audit" .../>}  {admin && <Route path="/admin/flush" .../>}
   <Route path="*" element={<Navigate to="/scan" replace />} />
 </Routes>
 ```
@@ -914,13 +914,24 @@ Written for the refactor/checkin-only branch and applied at cutover, not before 
 
 Migrations 1 to 8 work with both the earlier app and the check-in-only app. Migration 9 works only with the check-in-only app.
 
+### 16.10 Flush (`…10`)
+
+An admin-only way to put everyone back to "not arrived", for rehearsals. It only adds functions (`admin_flush_preview`, `admin_flush_checkins`), so it can be applied at any time.
+
+- `admin_flush_checkins(p_reason, p_remove_onspot)` calls `_require_role('admin')`, takes `pg_advisory_xact_lock(1)` (the `push_batch` lock), then inserts one `void` for every live `entry` pass: reason `'Flush: ' || reason`, method `staff`, one shared `client_at` (`now()`, so a flush is one group), actor the admin. Voids rather than deletes: phones pull only rows with a higher `seq`, so a delete would never reach them, and `scan_events` stays append-only.
+- With `p_remove_onspot`, on-spot parties get `deleted_at` (phones already hide those, as after a list Replace) and their `party_contacts` rows are deleted, so a later registration with the same mobile is not flagged as a duplicate of a removed guest. Booked guests are never touched.
+- It writes an `audit_log` row (`flush`, counts, reason) and sets `app.reason` so the parties and contacts audit triggers record why.
+- `admin_flush_preview()` returns `checkedIn`, `people`, `scans`, `onSpot` and the phones whose last heartbeat in the past six hours reported `pending_count > 0`.
+- There is no server guard against a phone that was offline: its old scans arrive after the flush and check guests in again. The screen warns about phones with unsent items (this phone's outbox must be empty) and the remedy is to flush again after that phone syncs. A guard on `client_at` was rejected because a phone with a slow clock would have genuine new scans refused.
+- Client: [`Flush.tsx`](../src/screens/Flush.tsx) (Account, Danger zone) shows the preview, an on-spot switch and a reason, then a sheet where the admin types `flush <n> check-ins` ([`flush.ts`](../src/lib/flush.ts) `phraseMatches`). `backend.flushPreview()` and `flushCheckins()` call the RPCs; a missing function (migration not applied) shows a plain message. `AuditScreen` collapses each flush's voids into one line with `splitFlushVoids`. Demo mode does the same locally in `demoBackend.ts`.
+
 ## 17. Tests, scripts and CI
 
 **[`supabase/test/harness.sh`](../supabase/test/harness.sh)**: starts `postgres:16` in Docker, loads [`stub_auth.sql`](../supabase/test/stub_auth.sql) (a fake `auth.users`, an `auth.uid()` that reads `request.jwt.claim.sub`, the `anon`, `authenticated` and `supabase_auth_admin` roles, and default privileges that hand every new table and function to `anon` and `authenticated`, as hosted Supabase does), applies every migration and `seed_dev.sql`, runs [`checks.sql`](../supabase/test/checks.sql), and removes the container on exit (`trap`). `set -euo pipefail` plus `psql -v ON_ERROR_STOP=1` make any failure fatal.
 
-**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message) and `_ev(...)` (build a pass event item for `push_batch`). Each check runs **as a real role** against the real objects. 99 checks in total: 59 in the main block, 28 for the guest import (validation, replace refusals, duplicate flagging, 5,000 guests, audit and grant checks), 5 for migration 9 (no dinner columns, dinner scans and dinner-type voids refused, old dinner scans ignored, dinner counters off) and 7 for migration 8 (an offline undo from the same phone is accepted, an undo dated before its scan is refused, an undo from another phone is judged by the server's clock, and heartbeats cannot overwrite another user's row; the test sets `session_replication_role = replica` to age a `received_at`, since the log is append-only). They also check that signed-in users can execute exactly the 15 functions the app needs. They cover access by role, RLS, column and function grants, idempotent replays, a repeat check-in from a second device being flagged, dinner scans being refused, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
+**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message) and `_ev(...)` (build a pass event item for `push_batch`). Each check runs **as a real role** against the real objects. 119 checks in total: 59 in the main block, 28 for the guest import (validation, replace refusals, duplicate flagging, 5,000 guests, audit and grant checks), 5 for migration 9 (no dinner columns, dinner scans and dinner-type voids refused, old dinner scans ignored, dinner counters off), 20 for migration 10 (flush: admin only, reason required, every live check-in voided, on-spot kept or removed, booked guests untouched, audit row, phones can read the voids) and 7 for migration 8 (an offline undo from the same phone is accepted, an undo dated before its scan is refused, an undo from another phone is judged by the server's clock, and heartbeats cannot overwrite another user's row; the test sets `session_replication_role = replica` to age a `received_at`, since the log is append-only). They also check that signed-in users can execute exactly the 17 functions the app needs. They cover access by role, RLS, column and function grants, idempotent replays, a repeat check-in from a second device being flagged, dinner scans being refused, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
 
-**Vitest** (`npm test`, config in [`vitest.config.ts`](../vitest.config.ts), separate from `vite.config.ts` so tests load neither the PWA plugin nor git): files match `src/**/*.test.{ts,tsx}`, run in `node` by default, and a test that needs the DOM opts in with a `// @vitest-environment jsdom` docblock. IndexedDB tests use `fake-indexeddb/auto`. Nine files, 178 tests: `lib/stats.test.ts` (the stats maths), `lib/state.test.ts` (`partyState`), `screens/Stats.test.tsx`, `screens/StatsCharts.test.tsx`, `screens/StatsFilter.test.tsx`, `lib/undo.test.ts` (`undoStatus`, `undoSecondsLeft`), `lib/counters.test.ts`, `lib/db.test.ts` (reads and writes, an in-place upgrade from `STORES_V1` that must keep every row including unsynced outbox items, and the `ui.dbUpdated` flag when another tab upgrades the database) and `components/ParkingChip.test.tsx`. [`src/test/fixtures.ts`](../src/test/fixtures.ts) holds the shared builders: `party()`, `ev()`, `voidOf()`, `resetIds()`, `T0`, `MIN`, `rowsOf()` and `rosterOf()`.
+**Vitest** (`npm test`, config in [`vitest.config.ts`](../vitest.config.ts), separate from `vite.config.ts` so tests load neither the PWA plugin nor git): files match `src/**/*.test.{ts,tsx}`, run in `node` by default, and a test that needs the DOM opts in with a `// @vitest-environment jsdom` docblock. IndexedDB tests use `fake-indexeddb/auto`. Ten files, 183 tests: `lib/stats.test.ts` (the stats maths), `lib/state.test.ts` (`partyState`), `lib/flush.test.ts` (the typed confirmation and grouping flush voids), `screens/Stats.test.tsx`, `screens/StatsCharts.test.tsx`, `screens/StatsFilter.test.tsx`, `lib/undo.test.ts` (`undoStatus`, `undoSecondsLeft`), `lib/counters.test.ts`, `lib/db.test.ts` (reads and writes, an in-place upgrade from `STORES_V1` that must keep every row including unsynced outbox items, and the `ui.dbUpdated` flag when another tab upgrades the database) and `components/ParkingChip.test.tsx`. [`src/test/fixtures.ts`](../src/test/fixtures.ts) holds the shared builders: `party()`, `ev()`, `voidOf()`, `resetIds()`, `T0`, `MIN`, `rowsOf()` and `rosterOf()`.
 
 **[`scripts/make_guest_guide.py`](../scripts/make_guest_guide.py)** generates `public/guest-list-guide.pdf` (the printable column guide for organisers). Keep its column table in step with `FIELDS`.
 
@@ -948,7 +959,7 @@ npm install
 npm run dev          # http://localhost:5173
 npm run dev:phone    # HTTPS on the LAN so a real phone can use the camera
 npm run typecheck    # tsc -b
-npm test             # vitest, 9 files, 178 tests (src/**/*.test.ts[x])
+npm test             # vitest, 10 files, 183 tests (src/**/*.test.ts[x])
 npm run lint         # oxlint
 npm run build        # tsc -b && vite build, output in dist/
 supabase/test/harness.sh   # database checks, needs Docker

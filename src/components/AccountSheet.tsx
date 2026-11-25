@@ -122,6 +122,16 @@ export function AccountSheet() {
           </Group>
         )}
 
+        {hasRole(s, 'admin') && (
+          <Group header="Danger zone" footer="Clears every check-in for a fresh start, for example after a rehearsal. Registrations stay.">
+            <button type="button" className="cell" style={{ color: 'var(--bad-text)' }} onClick={() => go('/admin/flush')}>
+              <Icon name="alert" size="m" />
+              <span className="grow">Flush all check-ins</span>
+              <Icon name="chev-r" size="s" className="chev" />
+            </button>
+          </Group>
+        )}
+
         <div className="px">
           <Btn kind="destructive" icon="logout" onClick={() => setConfirm(true)}>Sign out</Btn>
         </div>

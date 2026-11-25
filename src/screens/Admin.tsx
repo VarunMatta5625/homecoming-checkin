@@ -4,7 +4,8 @@ import { backend } from '../backend/index.ts'
 import type { AdminUser } from '../backend/types.ts'
 import { Alert, Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
 import { counterLabel } from '../lib/counters.ts'
-import { fmtTime, initials, roleLabel } from '../lib/format.ts'
+import { splitFlushVoids } from '../lib/flush.ts'
+import { fmtTime, initials, plural, roleLabel } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { Role } from '../lib/types.ts'
@@ -118,9 +119,11 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
 /** Shows the corrections and undos this phone knows about. User and guest edits are in the server audit log. */
 export function AuditScreen() {
   const roster = useRoster()
+  // A flush writes one void per guest. Show each flush as one line, not hundreds.
   const rows = useMemo(() => {
     if (!roster) return []
-    return roster.events.filter((e) => e.action === 'void').sort((a, b) => b.clientAt - a.clientAt)
+    const { flushes, rest } = splitFlushVoids(roster.events.filter((e) => e.action === 'void'))
+    return [...flushes.map((f) => ({ at: f.at, flush: f, e: null })), ...rest.map((e) => ({ at: e.clientAt, flush: null, e }))].sort((a, b) => b.at - a.at)
   }, [roster])
   return (
     <Page title="Audit log">
@@ -130,7 +133,16 @@ export function AuditScreen() {
         <Empty icon="history" title="Nothing logged yet" body="Undos and staff corrections will show up here with who did them and why." />
       ) : (
         <div className="group">
-          {rows.map((e) => (
+          {rows.map(({ flush, e }) => flush ? (
+            <div key={flush.key} className="rrow vtop">
+              <div className="lead lead36" style={{ background: 'var(--bad-bg)', color: 'var(--bad-text)' }}><Icon name="alert" size="m" /></div>
+              <div className="grow stack" style={{ gap: 2 }}>
+                <span className="nm" style={{ whiteSpace: 'normal' }}>{'Flushed all check-ins · ' + plural(flush.count, 'check-in') + ' undone'}</span>
+                <span className="meta" style={{ whiteSpace: 'normal' }}>{fmtTime(flush.at)} · {flush.by}</span>
+                <span className="meta" style={{ whiteSpace: 'normal' }}>Reason: {flush.reason}</span>
+              </div>
+            </div>
+          ) : e && (
             <div key={e.id} className="rrow vtop">
               <div className="lead lead36" style={{ background: 'var(--warn-bg)', color: 'var(--warn-text)' }}><Icon name={e.method === 'staff' ? 'wrench' : 'undo'} size="m" /></div>
               <div className="grow stack" style={{ gap: 2 }}>

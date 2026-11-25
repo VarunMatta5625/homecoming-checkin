@@ -3,7 +3,7 @@ import { SUPABASE_KEY, SUPABASE_URL, type Counter } from '../lib/config.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
-import type { AdminUser, Backend, Cursors, ImportResult, SignInResult, Snapshot } from './types.ts'
+import type { AdminUser, Backend, Cursors, FlushPreview, FlushResult, ImportResult, SignInResult, Snapshot } from './types.ts'
 
 const PAGE = 1000
 
@@ -76,6 +76,14 @@ function fail(error: { message: string; code?: string; status?: number }): never
     if (prefs.get().session) prefs.set({ sessionExpired: true })
   }
   throw new Error(error.message)
+}
+
+/** A flush function that isn't there means migration 10 hasn't been applied to this project yet. */
+function flushFail(error: { message: string; code?: string; status?: number }): never {
+  if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) {
+    throw new Error('The database needs its latest update (migration 10) before it can flush check-ins.')
+  }
+  return fail(error)
 }
 
 async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Promise<Snapshot> {
@@ -194,5 +202,17 @@ export const supabaseBackend: Backend = {
     const { data, error } = await sb().rpc('admin_export_passes')
     if (error) fail(error)
     return data as PassRow[]
+  },
+
+  async flushPreview() {
+    const { data, error } = await sb().rpc('admin_flush_preview')
+    if (error) flushFail(error)
+    return data as FlushPreview
+  },
+
+  async flushCheckins(opts) {
+    const { data, error } = await sb().rpc('admin_flush_checkins', { p_reason: opts.reason, p_remove_onspot: opts.removeOnSpot })
+    if (error) flushFail(error)
+    return data as FlushResult
   },
 }

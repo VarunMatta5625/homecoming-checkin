@@ -1,7 +1,11 @@
+import { db } from '../lib/db.ts'
+import { FLUSH_PREFIX } from '../lib/flush.ts'
+import { newId } from '../lib/ids.ts'
 import { prefs } from '../lib/prefs.ts'
-import type { OutboxItem, PushResult, Session } from '../lib/types.ts'
+import { groupByParty, liveEvents, partyState } from '../lib/state.ts'
+import type { OutboxItem, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import { demoSnapshot } from './demo.ts'
-import type { AdminUser, Backend, SignInResult } from './types.ts'
+import type { AdminUser, Backend, FlushPreview, FlushResult, SignInResult } from './types.ts'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -87,6 +91,35 @@ export const demoBackend: Backend = {
       seen.add(r.mobile)
     }
     return { imported: rows.length, flagged, retired: opts.replace ? demoSnapshot().parties.length : 0 }
+  },
+  // Demo mode has no server: the flush works on this phone's own copy, the same way the server's does (one void per live check-in).
+  async flushPreview(): Promise<FlushPreview> {
+    await sleep(200)
+    const [parties, events] = await Promise.all([db.parties.toArray(), db.events.toArray()])
+    const grouped = groupByParty(events)
+    let checkedIn = 0
+    let people = 0
+    for (const p of parties) {
+      if (p.deletedAt) continue
+      const st = partyState(p, grouped.get(p.id) ?? [])
+      if (st.entered) {
+        checkedIn++
+        people += st.headcount ?? 0
+      }
+    }
+    return { checkedIn, people, scans: liveEvents(events).length, onSpot: parties.filter((p) => p.source === 'onspot' && !p.deletedAt).length, phones: [] }
+  },
+  async flushCheckins(opts): Promise<FlushResult> {
+    await sleep(500)
+    const s = prefs.get()
+    const at = Date.now()
+    const voids: ScanEvent[] = liveEvents(await db.events.toArray()).map((e) => ({
+      id: newId(), partyId: e.partyId, checkpoint: 'entry', action: 'void', qty: 0, voidsEventId: e.id, reason: FLUSH_PREFIX + opts.reason.trim(),
+      method: 'staff', actorId: s.session?.actorId ?? '', actorName: s.session?.name ?? '', counter: '', deviceId: s.deviceId, clientAt: at,
+    }))
+    await db.events.bulkAdd(voids)
+    const removedOnSpot = opts.removeOnSpot ? await db.parties.filter((p) => p.source === 'onspot' && !p.deletedAt).modify({ deletedAt: new Date().toISOString() }) : 0
+    return { voided: voids.length, removedOnSpot }
   },
   async exportPasses() {
     await sleep(300)

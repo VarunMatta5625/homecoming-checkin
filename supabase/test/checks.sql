@@ -173,7 +173,7 @@ begin
   perform _ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 15, 'signed-in users can execute exactly the 15 functions the app needs');
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 17, 'signed-in users can execute exactly the 17 functions the app needs');
 
   -- Sign-up hook: only listed emails may create an account, and only Supabase Auth may run the hook
   execute 'set local role supabase_auth_admin';
@@ -365,4 +365,63 @@ begin
   perform _ok((select count(*) from scan_events where checkpoint = 'dinner') >= 1, 'an old dinner scan is kept in the log');
   perform _ok(pz is not null and not (select entered from party_state where party_id = pz), 'an old dinner scan does not count as a check-in');
   raise notice 'MIGRATION 9 CHECKS PASSED';
+end $t$;
+
+-- Flush (migration 10)
+do $t$
+declare r jsonb; p1 uuid; p2 uuid; os uuid := gen_random_uuid(); d1 uuid := gen_random_uuid(); pre jsonb; gone int;
+begin
+  update staff_users set role = 'admin', active = true where email = 'admin@homecoming.test';
+  select id into p1 from parties where source = 'booked' and deleted_at is null order by pass_code limit 1 offset 0;
+  select id into p2 from parties where source = 'booked' and deleted_at is null order by pass_code limit 1 offset 1;
+  perform _as('volunteer1@homecoming.test');
+  perform push_batch(jsonb_build_array(
+    _ev(p1, 'entry', 2, null, d1), _ev(p2, 'entry', 3, null, d1),
+    jsonb_build_object('id', gen_random_uuid(), 'type', 'party', 'payload', jsonb_build_object(
+      'party', jsonb_build_object('id', os, 'passCode', 'GH26-FLSH1', 'qrToken', 'tok-flsh1', 'leadName', 'Flush Walk-in', 'batchYear', 2011,
+                                  'school', 'School of Science', 'spouse', 'no', 'children', 0, 'parking', 'none'),
+      'contact', jsonb_build_object('mobile', '90000 07777', 'email', null)))));
+  perform push_batch(jsonb_build_array(_ev(os, 'entry', 1, null, d1)));
+  perform _ok(_try('select admin_flush_checkins(''rehearsal over'', false)') like '%not authorised%', 'a volunteer cannot flush');
+  perform _ok(_try('select admin_flush_preview()') like '%not authorised%', 'a volunteer cannot preview a flush');
+  perform _back();
+  perform _as('staff@homecoming.test');
+  perform _ok(_try('select admin_flush_checkins(''rehearsal over'', false)') like '%not authorised%', 'staff cannot flush');
+  perform _back();
+  perform _ok((select entered from party_state where party_id = p1) and (select entered from party_state where party_id = os), 'the test guests start checked in');
+
+  perform _as('admin@homecoming.test');
+  pre := admin_flush_preview();
+  perform _ok((pre->>'checkedIn')::int >= 3 and (pre->>'scans')::int >= 3 and (pre->>'onSpot')::int >= 1 and jsonb_typeof(pre->'phones') = 'array', 'preview counts check-ins, scans and on-spot guests');
+  perform _ok(_try('select admin_flush_checkins('' ab '', false)') like '%reason is required%', 'a flush needs a reason');
+  perform _ok((select count(*) from scan_events where action = 'void' and reason like 'Flush:%') = 0, 'a refused flush wrote nothing');
+
+  -- Flush, keep on-spot guests
+  r := admin_flush_checkins('rehearsal over', false);
+  perform _back();
+  perform _ok((r->>'voided')::int = (pre->>'scans')::int and (r->>'removedOnSpot')::int = 0, 'flush voids every live check-in and removes nobody');
+  perform _ok(not (select entered from party_state where party_id = p1) and not (select entered from party_state where party_id = p2), 'flushed guests are not checked in');
+  perform _ok(exists (select 1 from party_state where party_id = os) and not (select entered from party_state where party_id = os), 'an on-spot guest stays registered but is not checked in');
+  perform _ok((select count(*) from party_state where entered) = 0, 'nobody is checked in after a flush');
+  perform _ok((select count(distinct client_at) from scan_events where reason = 'Flush: rehearsal over') = 1 and (select bool_and(method = 'staff') from scan_events where reason = 'Flush: rehearsal over'), 'the flush voids share one timestamp and are marked staff');
+  perform _ok((select count(*) from audit_log where action = 'flush' and reason = 'rehearsal over') = 1, 'the flush is in the audit log');
+  perform _ok(exists (select 1 from party_contacts where party_id = os), 'keeping on-spot guests keeps their contact rows');
+
+  -- Scanning again works, and a second flush voids only what is live
+  perform _as('volunteer1@homecoming.test');
+  perform push_batch(jsonb_build_array(_ev(p1, 'entry', 2, null, d1)));
+  perform _back();
+  perform _ok((select entered from party_state where party_id = p1), 'a guest can be checked in again after a flush');
+  gone := (select count(*) from parties where source = 'booked' and deleted_at is not null);
+  perform _as('admin@homecoming.test');
+  r := admin_flush_checkins('second round', true);
+  perform _back();
+  perform _ok((r->>'voided')::int = 1, 'a second flush voids only the one live check-in');
+  perform _ok((r->>'removedOnSpot')::int >= 1 and not exists (select 1 from party_state where party_id = os), 'removing on-spot guests takes them off the roster');
+  perform _ok((select deleted_at is not null from parties where id = os) and not exists (select 1 from party_contacts where party_id = os), 'a removed on-spot guest is soft-deleted and its contact is gone');
+  perform _ok((select count(*) from parties where source = 'booked' and deleted_at is not null) = gone, 'booked guests are never touched');
+  perform _as('volunteer1@homecoming.test');
+  perform _ok((get_snapshot(0, 0, 100000)::text like '%Flush: second round%'), 'phones can read the flush voids in a snapshot');
+  perform _back();
+  raise notice 'MIGRATION 10 CHECKS PASSED';
 end $t$;

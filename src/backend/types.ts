@@ -12,6 +12,23 @@ export interface ImportResult {
   retired: number
 }
 
+/** What a flush would do right now. phones: devices that reported unsent items recently (their scans would check guests in again). */
+export interface FlushPreview {
+  /** Parties checked in now, and the people in them. */
+  checkedIn: number
+  people: number
+  /** Live check-in events that would be undone. */
+  scans: number
+  /** On-spot guests that can be removed too. */
+  onSpot: number
+  phones: { counter: string | null; pending: number; lastSyncAt: number }[]
+}
+
+export interface FlushResult {
+  voided: number
+  removedOnSpot: number
+}
+
 export interface AdminUser {
   email: string
   name: string
@@ -56,4 +73,8 @@ export interface Backend {
   importGuests(rows: GuestRow[], opts: { filename: string; replace: boolean }): Promise<ImportResult>
   /** Admin. Every current guest with pass code, QR token and contact. The server records the export. */
   exportPasses(): Promise<PassRow[]>
+  /** Admin. What a flush would do right now. */
+  flushPreview(): Promise<FlushPreview>
+  /** Admin. Undoes every live check-in in one go (one void each, so the log stays append-only). removeOnSpot also removes guests registered in the app. */
+  flushCheckins(opts: { reason: string; removeOnSpot: boolean }): Promise<FlushResult>
 }

@@ -17,6 +17,7 @@ import { SignInScreen } from './screens/SignIn.tsx'
 // Screens people open less often load on demand. The service worker precaches every chunk, so they still work offline.
 const AuditScreen = lazy(() => import('./screens/Admin.tsx').then((m) => ({ default: m.AuditScreen })))
 const UsersScreen = lazy(() => import('./screens/Admin.tsx').then((m) => ({ default: m.UsersScreen })))
+const FlushScreen = lazy(() => import('./screens/Flush.tsx').then((m) => ({ default: m.FlushScreen })))
 const ImportScreen = lazy(() => import('./screens/Import.tsx').then((m) => ({ default: m.ImportScreen })))
 const GuestDetailScreen = lazy(() => import('./screens/GuestDetail.tsx').then((m) => ({ default: m.GuestDetailScreen })))
 const RegisterScreen = lazy(() => import('./screens/Register.tsx').then((m) => ({ default: m.RegisterScreen })))
@@ -55,6 +56,7 @@ function Shell() {
         {admin && <Route path="/admin/users" element={<UsersScreen />} />}
         {admin && <Route path="/admin/import" element={<ImportScreen />} />}
         {admin && <Route path="/admin/audit" element={<AuditScreen />} />}
+        {admin && <Route path="/admin/flush" element={<FlushScreen />} />}
         <Route path="*" element={<Navigate to="/scan" replace />} />
       </Routes>
       </Suspense>
