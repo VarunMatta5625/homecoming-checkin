@@ -173,7 +173,7 @@ begin
   perform _ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 17, 'signed-in users can execute exactly the 17 functions the app needs');
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 18, 'signed-in users can execute exactly the 18 functions the app needs');
 
   -- Sign-up hook: only listed emails may create an account, and only Supabase Auth may run the hook
   execute 'set local role supabase_auth_admin';
@@ -424,4 +424,71 @@ begin
   perform _ok((get_snapshot(0, 0, 100000)::text like '%Flush: second round%'), 'phones can read the flush voids in a snapshot');
   perform _back();
   raise notice 'MIGRATION 10 CHECKS PASSED';
+end $t$;
+
+-- Delete a person (migration 11)
+do $t$
+declare r jsonb; u jsonb; d1 uuid := gen_random_uuid(); pa uuid; sid uuid;
+begin
+  update staff_users set role = 'admin', active = true where email = 'admin@homecoming.test';
+  insert into auth.users (email, email_confirmed_at) values ('del.signedin@homecoming.test', now());
+  select id into pa from parties where deleted_at is null order by pass_code limit 1;
+  perform _as('admin@homecoming.test');
+  perform admin_set_user('del.clean@homecoming.test', 'Never Signed In', 'staff', false);
+  perform admin_set_user('del.signedin@homecoming.test', 'Signed In Only', 'volunteer', true);
+  perform admin_set_user('del.active@homecoming.test', 'Still Active', 'volunteer', true);
+  perform _back();
+  perform _as('del.signedin@homecoming.test'); perform whoami(); perform _back();   -- links the account: one audit entry of their own
+  perform _as('admin@homecoming.test');
+  perform admin_set_user('del.signedin@homecoming.test', 'Signed In Only', 'volunteer', false);
+  u := (select x from jsonb_array_elements(admin_list_users()) x where x->>'email' = 'del.clean@homecoming.test');
+  perform _ok((u->>'canDelete')::boolean, 'a person with no history is listed as deletable');
+  u := (select x from jsonb_array_elements(admin_list_users()) x where x->>'email' = 'admin@homecoming.test');
+  perform _ok(not (u->>'canDelete')::boolean, 'you are never listed as deletable yourself');
+  u := (select x from jsonb_array_elements(admin_list_users()) x where x->>'email' = 'volunteer1@homecoming.test');
+  perform _ok(not (u->>'canDelete')::boolean, 'a person who scanned guests is not deletable');
+  perform _back();
+
+  perform _as('volunteer2@homecoming.test');
+  perform _ok(_try('select admin_delete_user(''del.clean@homecoming.test'')') like '%not authorised%', 'a volunteer cannot delete a person');
+  perform _back();
+  perform _as('staff@homecoming.test');
+  perform _ok(_try('select admin_delete_user(''del.clean@homecoming.test'')') like '%not authorised%', 'staff cannot delete a person');
+  perform _back();
+
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_delete_user(''admin@homecoming.test'')') like '%delete yourself%', 'you cannot delete yourself');
+  perform _ok(_try('select admin_delete_user(''del.active@homecoming.test'')') like '%Switch them off first%', 'an active person must be switched off before deleting');
+  perform _ok(_try('select admin_delete_user(''nobody@homecoming.test'')') like '%No such person%', 'deleting an unknown email is refused');
+  perform _ok(_try('select admin_delete_user(''volunteer1@homecoming.test'')') like '%Switch them off first%', 'an active person with scans is refused');
+  perform _back();
+  update staff_users set active = false where email = 'volunteer1@homecoming.test';
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_delete_user(''volunteer1@homecoming.test'')') like '%on record%', 'a switched-off person with scans is refused');
+  perform _ok((select count(*) from staff_users where email = 'volunteer1@homecoming.test') = 1, 'the refused person is still on the list');
+
+  r := admin_delete_user('del.clean@homecoming.test');
+  perform _ok(not exists (select 1 from staff_users where email = 'del.clean@homecoming.test') and r->>'email' = 'del.clean@homecoming.test', 'a person with no history is deleted');
+  sid := (select id from staff_users where email = 'del.signedin@homecoming.test');
+  perform _ok(exists (select 1 from audit_log where actor_id = sid), 'the signed-in account has an audit entry of its own');
+  perform admin_delete_user('del.signedin@homecoming.test');
+  perform _back();
+  perform _ok(not exists (select 1 from staff_users where email = 'del.signedin@homecoming.test'), 'a person who only signed in is deleted too');
+  perform _ok(not exists (select 1 from audit_log where actor_id = sid) and exists (select 1 from audit_log where row_id = sid::text and action = 'update'), 'their audit entries stay, without the pointer to the deleted account');
+  perform _ok((select count(*) from audit_log where table_name = 'staff_users' and action = 'delete' and reason = 'User deleted') = 2, 'each deletion is in the audit log');
+  perform _ok((select count(*) from audit_log where table_name = 'staff_users' and action = 'delete' and actor_id = (select id from staff_users where email = 'admin@homecoming.test')) >= 2, 'the audit log says which admin deleted them');
+  perform _as('unlisted@homecoming.test');
+  perform _ok(_try('select push_batch(''[]''::jsonb)') like '%switched off or removed%', 'an account that is not on the list is told it is switched off or removed');
+  perform _back();
+  perform _as('inactive@homecoming.test');
+  perform _ok(_try('select get_snapshot()') like '%switched off or removed%', 'a switched-off account is told so by every sync call');
+  perform _back();
+  perform _as('volunteer2@homecoming.test');
+  perform _ok(_try('select admin_import_guests(''x'', ''[]''::jsonb, false)') = 'not authorised', 'a role that is too low still says not authorised');
+  perform _back();
+  insert into auth.users (email, email_confirmed_at) values ('del.active@homecoming.test', now());
+  perform _as('del.active@homecoming.test');
+  perform _ok(whoami()->>'role' = 'volunteer', 'a person who was never switched off still gets in');
+  perform _back();
+  raise notice 'MIGRATION 11 CHECKS PASSED';
 end $t$;

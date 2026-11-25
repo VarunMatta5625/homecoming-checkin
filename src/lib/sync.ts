@@ -75,6 +75,8 @@ async function pull() {
       })
     }
     if (snap.cursors) prefs.set({ partyCursor: snap.cursors.party, eventCursor: snap.cursors.event, lastSyncAt: Date.now() })
+    // The server answered: this account works again (an admin switched it back on).
+    if (prefs.get().accessRemoved) prefs.set({ accessRemoved: false })
   } catch {
     /* offline or session ended */
   } finally {

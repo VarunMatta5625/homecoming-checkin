@@ -69,6 +69,7 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
   const emailOk = /^\S+@\S+\.\S+$/.test(u.email.trim())
 
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const isMe = init.user.email.toLowerCase() === prefs.get().session?.email.toLowerCase()
 
   const save = async (next: AdminUser = u) => {
@@ -82,6 +83,16 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
     } catch (e) {
       setConfirmRemove(false)
       setError(e instanceof Error ? e.message : 'Couldn’t save. Check your signal and try again.')
+    }
+  }
+
+  const del = async () => {
+    try {
+      await backend.deleteUser(init.user.email)
+      onSaved()
+    } catch (e) {
+      setConfirmDelete(false)
+      setError(e instanceof Error ? e.message : 'Couldn’t delete. Check your signal and try again.')
     }
   }
 
@@ -100,15 +111,30 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
       <div className="px stack g2">
         <Btn disabled={!emailOk} onClick={() => void save()}>Save</Btn>
         {!init.isNew && u.active && !isMe && <Btn kind="destructive" onClick={() => setConfirmRemove(true)}>Remove from the list</Btn>}
+        {!init.isNew && !init.user.active && !isMe && init.user.canDelete && <Btn kind="destructive" onClick={() => setConfirmDelete(true)}>Delete permanently</Btn>}
       </div>
+      {!init.isNew && !init.user.active && !isMe && init.user.canDelete === false && (
+        <div className="gh-f">Scans or edits on record name this person, so they can only stay switched off. The records keep saying who did what.</div>
+      )}
       {confirmRemove && (
         <Alert
           title={'Remove ' + (init.user.name || init.user.email) + '?'}
-          body="They can no longer sign in, and any phone they are signed in on stops working. Their scans and edits stay in the records. You can switch them back on later."
+          body="They can no longer sign in. A phone they are signed in on signs out the next time it has signal (it asks first if scans are still unsent). Their scans and edits stay in the records. You can switch them back on later."
           onClose={() => setConfirmRemove(false)}
           actions={[
             { label: 'Cancel', onClick: () => setConfirmRemove(false) },
             { label: 'Remove', kind: 'danger', onClick: () => void save({ ...init.user, active: false }) },
+          ]}
+        />
+      )}
+      {confirmDelete && (
+        <Alert
+          title={'Delete ' + (init.user.name || init.user.email) + ' for good?'}
+          body="They come off the list entirely. Nothing on record names them, so no scans or edits are affected. This can’t be undone, but you can add the email again later."
+          onClose={() => setConfirmDelete(false)}
+          actions={[
+            { label: 'Cancel', onClick: () => setConfirmDelete(false) },
+            { label: 'Delete', kind: 'danger', onClick: () => void del() },
           ]}
         />
       )}

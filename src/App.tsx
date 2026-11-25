@@ -13,6 +13,7 @@ import { SearchScreen } from './screens/Search.tsx'
 import { SetupScreen } from './screens/Setup.tsx'
 import { PrivacyScreen } from './screens/Privacy.tsx'
 import { SignInScreen } from './screens/SignIn.tsx'
+import { AccessRemovedScreen } from './screens/AccessRemoved.tsx'
 
 // Screens people open less often load on demand. The service worker precaches every chunk, so they still work offline.
 const AuditScreen = lazy(() => import('./screens/Admin.tsx').then((m) => ({ default: m.AuditScreen })))
@@ -32,7 +33,7 @@ export default function App() {
     <div className="gh app">
       <Sprite />
       {/* The privacy policy is public: Google and guests open it without signing in. */}
-      {pathname === '/privacy' ? <PrivacyScreen /> : !p.session ? <SignInScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
+      {pathname === '/privacy' ? <PrivacyScreen /> : !p.session ? <SignInScreen /> : p.accessRemoved ? <AccessRemovedScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
     </div>
   )
 }

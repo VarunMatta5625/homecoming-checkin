@@ -10,10 +10,14 @@ export interface Prefs {
   bigText: boolean
   session: Session | null
   sessionExpired: boolean
+  /** The server says this account was switched off or removed. The phone signs out (it asks first when scans are unsent). */
+  accessRemoved: boolean
   /** When the roster was last downloaded or refreshed. Null until the first download finishes. */
   rosterAt: number | null
   lastSyncAt: number | null
   cameraAsked: boolean
+  /** Chose "Not now, I'll type codes". Kept across refreshes and sign-ins, so the browser's camera prompt doesn't come back by itself. */
+  cameraDeclined: boolean
   /** Demo only: pretend there is no network. */
   demoOffline: boolean
   /** Sign-out finished but the local data wipe has not. Retried on every start; nothing syncs meanwhile. */
@@ -30,9 +34,11 @@ const defaults: Prefs = {
   bigText: false,
   session: null,
   sessionExpired: false,
+  accessRemoved: false,
   rosterAt: null,
   lastSyncAt: null,
   cameraAsked: false,
+  cameraDeclined: false,
   demoOffline: false,
   wipePending: false,
   partyCursor: 0,

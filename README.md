@@ -296,8 +296,8 @@ Light, dark or automatic, with a larger-text option for long shifts. The gate in
 
 ## In numbers
 
-- **183** automated tests cover the maths behind the stats, the undo rules, the counters and the phone’s local database.
-- **119** database checks run against a real Postgres, signed in as real roles, on every change.
+- **187** automated tests cover the maths behind the stats, the undo rules, the counters and the phone’s local database.
+- **140** database checks run against a real Postgres, signed in as real roles, on every change.
 - A **5,000-guest** list loads in about a third of a second in those database tests.
 - **No application servers** to look after: the app is static files plus a managed database.
 

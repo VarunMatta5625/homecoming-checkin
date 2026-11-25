@@ -16,9 +16,10 @@ Database for the check-in app: schema, row-level security and the RPCs the app c
 | `migrations/20261122000008_undo_and_heartbeat.sql` | A volunteer's undo is refused if dated before its scan, and an undo from a different phone than the scan is judged by the server's clock; `device_heartbeat` rows are keyed on device and user so one user can't overwrite another's (existing projects: run just this file; the app works with or without it) |
 | `migrations/20261122000009_checkin_only.sql` | The app no longer serves dinner. `party_state` loses its dinner columns and entitlement is the party size, the server refuses any event that is not an entry check-in, and the dinner counters are switched off. Nothing is deleted. Apply only when the check-in-only app is deployed (see below) |
 | `migrations/20261122000010_flush_checkins.sql` | `admin_flush_preview` and `admin_flush_checkins`: an admin undoes every live check-in in one go (one void each; the log stays append-only) and can remove on-spot guests too. Only adds two functions, so it is safe to apply at any time, including while the earlier app is deployed |
+| `migrations/20261122000011_delete_user.sql` | `admin_delete_user`: delete a switched-off person for good, only when no scan, registration, review or edit names them. `admin_list_users` also reports `canDelete`. A switched-off or removed account now gets "Your account is switched off or removed" from every sync call, which the app uses to sign that phone out. Safe to apply at any time |
 | `seed_admin.sql` | Your first admin (edit the email first) |
 | `seed_dev.sql` | Fake test accounts and 120 fake parties. Testing only |
-| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 119 acceptance checks |
+| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 140 acceptance checks |
 
 When you add a function, end its migration with `revoke execute on function ... from public, anon;` and grant it to `authenticated` by name. Postgres lets everyone run a new function by default; the checks fail if one is open to the signed-out role.
 

@@ -145,7 +145,7 @@ export async function signOutAndWipe() {
  * Leaves the app first; the wipe can't hold the UI hostage if the local database is busy.
  */
 export async function startOver(session: Session | null) {
-  prefs.set({ session, sessionExpired: false, counter: null, rosterAt: null, lastSyncAt: null, wipePending: true, partyCursor: 0, eventCursor: 0 })
+  prefs.set({ session, sessionExpired: false, accessRemoved: false, counter: null, rosterAt: null, lastSyncAt: null, wipePending: true, partyCursor: 0, eventCursor: 0 })
   await finishWipe()
 }
 

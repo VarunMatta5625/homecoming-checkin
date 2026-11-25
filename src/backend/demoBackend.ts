@@ -72,7 +72,8 @@ export const demoBackend: Backend = {
   },
   async listUsers() {
     await sleep(120)
-    return readUsers()
+    // The demo people have no scans on record, so the switched-off ones can be deleted.
+    return readUsers().map((u) => ({ ...u, canDelete: u.email.toLowerCase() !== ACCOUNTS.admin!.email.toLowerCase() }))
   },
   async saveUser(user) {
     const list = readUsers()
@@ -80,6 +81,10 @@ export const demoBackend: Backend = {
     if (i >= 0) list[i] = user
     else list.push(user)
     localStorage.setItem(USERS_KEY, JSON.stringify(list))
+  },
+  async deleteUser(email) {
+    await sleep(200)
+    localStorage.setItem(USERS_KEY, JSON.stringify(readUsers().filter((u) => u.email.toLowerCase() !== email.toLowerCase())))
   },
   // Demo mode has no database: the import is checked and counted, but nothing is stored.
   async importGuests(rows, opts) {

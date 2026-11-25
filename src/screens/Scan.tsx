@@ -24,7 +24,25 @@ export function ScanScreen() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const [cam, setCam] = useState<Cam>('starting')
-  const [declined, setDeclined] = useState(false)
+  const declined = p.cameraDeclined
+  const setDeclined = (cameraDeclined: boolean) => prefs.set({ cameraDeclined })
+  // What the browser itself remembers. Local storage can be cleared (private tabs, in-app browsers) while the camera stays allowed.
+  const [granted, setGranted] = useState(false)
+  useEffect(() => {
+    let status: PermissionStatus | null = null
+    navigator.permissions
+      ?.query({ name: 'camera' as PermissionName })
+      .then((s) => {
+        status = s
+        setGranted(s.state === 'granted')
+        s.onchange = () => setGranted(s.state === 'granted')
+      })
+      .catch(() => {}) // not every browser can report camera permission
+    return () => {
+      if (status) status.onchange = null
+    }
+  }, [])
+  const asked = p.cameraAsked || granted
   const [canTorch, setCanTorch] = useState(false)
   const [torch, setTorch] = useState(false)
   const [flow, setFlow] = useState<Flow | null>(null)
@@ -51,7 +69,7 @@ export function ScanScreen() {
     [lookup],
   )
 
-  const wantCam = p.cameraAsked && !declined
+  const wantCam = asked && !declined
   useEffect(() => {
     if (!wantCam) return
     setCam('starting')
@@ -88,7 +106,7 @@ export function ScanScreen() {
     }
   }
 
-  const camOff = !p.cameraAsked ? 'ask' : declined ? 'declined' : cam === 'blocked' ? 'blocked' : cam === 'none' ? 'none' : null
+  const camOff = !asked ? 'ask' : declined ? 'declined' : cam === 'blocked' ? 'blocked' : cam === 'none' ? 'none' : null
 
   return (
     <div className="scan">

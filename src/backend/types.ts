@@ -34,6 +34,8 @@ export interface AdminUser {
   name: string
   role: Role
   active: boolean
+  /** True when nothing on record names this person, so they can be deleted for good (migration 11). Absent before it. */
+  canDelete?: boolean
 }
 
 /** Server positions: everything up to here has been pulled. */
@@ -69,6 +71,8 @@ export interface Backend {
   ping(): Promise<boolean>
   listUsers(): Promise<AdminUser[]>
   saveUser(user: AdminUser): Promise<void>
+  /** Admin. Deletes a switched-off person who has no history. The server refuses anyone with scans or edits on record. */
+  deleteUser(email: string): Promise<void>
   /** Admin. Loads a guest list in one go (all rows or none). replace retires the current guests first. */
   importGuests(rows: GuestRow[], opts: { filename: string; replace: boolean }): Promise<ImportResult>
   /** Admin. Every current guest with pass code, QR token and contact. The server records the export. */

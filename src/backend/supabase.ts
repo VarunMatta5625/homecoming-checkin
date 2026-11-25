@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_KEY, SUPABASE_URL, type Counter } from '../lib/config.ts'
+import { authFailure } from '../lib/authError.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
@@ -72,9 +73,8 @@ const toEvent = (r: Row): ScanEvent => ({
 
 /** Turns an RPC error into a thrown Error. An auth failure also flags the session as expired. */
 function fail(error: { message: string; code?: string; status?: number }): never {
-  if (error.code === '42501' || error.code === 'PGRST301' || error.status === 401 || error.status === 403) {
-    if (prefs.get().session) prefs.set({ sessionExpired: true })
-  }
+  const why = authFailure(error)
+  if (why && prefs.get().session) prefs.set(why === 'removed' ? { accessRemoved: true } : { sessionExpired: true })
   throw new Error(error.message)
 }
 
@@ -190,6 +190,14 @@ export const supabaseBackend: Backend = {
   async saveUser(u) {
     const { error } = await sb().rpc('admin_set_user', { p_email: u.email, p_name: u.name, p_role: u.role, p_active: u.active })
     if (error) fail(error)
+  },
+
+  async deleteUser(email) {
+    const { error } = await sb().rpc('admin_delete_user', { p_email: email })
+    if (error) {
+      if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) throw new Error('The database needs its latest update (migration 11) before it can delete people.')
+      fail(error)
+    }
   },
 
   async importGuests(rows: GuestRow[], opts) {
