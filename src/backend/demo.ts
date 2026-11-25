@@ -77,7 +77,6 @@ function makeParty(id: string, name: string, batch: number, school: string, cour
     spouse,
     children: kids,
     partySize: 1 + (spouse === 'no' ? 0 : 1) + kids,
-    entitledOverride: null,
     parking,
     possibleDuplicateOf: null,
     deletedAt: null,
@@ -109,33 +108,28 @@ export function demoSnapshot(): { parties: Party[]; events: ScanEvent[] } {
 
   const events: ScanEvent[] = []
   let n = 0
-  const ev = (partyId: string, checkpoint: 'entry' | 'dinner', qty: number, ago: number, counter: string, actor: string) => {
+  const ev = (partyId: string, qty: number, ago: number, counter: string, actor: string) => {
     const at = mins(ago)
-    events.push({ id: 'seed-' + ++n, seq: n, partyId, checkpoint, action: 'pass', qty, method: 'qr', actorId: 'u-' + actor.split(' ')[0]!.toLowerCase(), actorName: actor, counter, deviceId: 'seed-device', clientAt: at, receivedAt: at })
+    events.push({ id: 'seed-' + ++n, seq: n, partyId, checkpoint: 'entry', action: 'pass', qty, method: 'qr', actorId: 'u-' + actor.split(' ')[0]!.toLowerCase(), actorName: actor, counter, deviceId: 'seed-device', clientAt: at, receivedAt: at })
   }
   // named guests cover every result state
-  ev('g1', 'entry', 4, 52, 'GATE-2', 'Sneha P.'); ev('g1', 'dinner', 1, 23, 'DINNER-3', 'Anitha S.')
-  ev('g3', 'entry', 2, 36, 'GATE-2', 'Sneha P.')
-  ev('g4', 'entry', 3, 59, 'GATE-1', 'Kiran B.'); ev('g4', 'dinner', 3, 20, 'DINNER-2', 'Ramesh K.')
-  ev('g6', 'entry', 3, 44, 'GATE-1', 'Kiran B.')
-  ev('g7', 'entry', 2, 74, 'GATE-1', 'Kiran B.'); ev('g7', 'dinner', 2, 29, 'DINNER-1', 'Anitha S.')
-  ev('g9', 'entry', 3, 33, 'GATE-2', 'Sneha P.')
-  ev('g11', 'entry', 2, 32, 'GATE-1', 'Kiran B.'); ev('g11', 'dinner', 2, 13, 'DINNER-4', 'Rahul T.'); ev('g11', 'dinner', 1, 11, 'DINNER-7', 'Divya M.')
-  ev('g12', 'entry', 4, 46, 'GATE-2', 'Sneha P.'); ev('g12', 'dinner', 4, 24, 'DINNER-1', 'Anitha S.'); ev('g12', 'dinner', 1, 22, 'DINNER-9', 'Sowmya L.')
-  ev('g13', 'entry', 1, 30, 'GATE-1', 'Kiran B.'); ev('g13', 'dinner', 1, 19, 'DINNER-2', 'Ramesh K.'); ev('g13', 'dinner', 1, 18, 'DINNER-6', 'Divya M.')
-  ev('g14', 'entry', 1, 27, 'GATE-1', 'Kiran B.'); ev('g14', 'dinner', 1, 9, 'DINNER-5', 'Kiran B.')
-  ev('g15', 'entry', 3, 40, 'GATE-2', 'Sneha P.'); ev('g15', 'dinner', 1, 15, 'DINNER-8', 'Vamsi R.')
+  ev('g1', 4, 52, 'GATE-2', 'Sneha P.')
+  ev('g3', 2, 36, 'GATE-2', 'Sneha P.')
+  ev('g4', 3, 59, 'GATE-1', 'Kiran B.')
+  ev('g6', 3, 44, 'GATE-1', 'Kiran B.')
+  ev('g7', 2, 74, 'GATE-1', 'Kiran B.')
+  ev('g9', 3, 33, 'GATE-2', 'Sneha P.')
+  ev('g11', 2, 32, 'GATE-1', 'Kiran B.')
+  ev('g12', 4, 46, 'GATE-2', 'Sneha P.')
+  ev('g13', 1, 30, 'GATE-1', 'Kiran B.')
+  ev('g14', 1, 27, 'GATE-1', 'Kiran B.')
+  ev('g15', 3, 40, 'GATE-2', 'Sneha P.')
 
   const gates = ['GATE-1', 'GATE-2']
-  const staffNames = ['Rahul T.', 'Ramesh K.', 'Anitha S.', 'Kiran B.', 'Divya M.', 'Farah N.', 'Vamsi R.', 'Sowmya L.', 'Imran A.', 'Rahul T.']
   for (const p of parties.slice(16)) {
     if (r() > 0.6) continue
     const entry = 25 + Math.floor(r() * 110)
-    ev(p.id, 'entry', p.partySize, entry, gates[Math.floor(r() * 2)]!, r() < 0.5 ? 'Sneha P.' : 'Kiran B.')
-    if (r() < 0.55) {
-      const c = Math.floor(r() * 10)
-      ev(p.id, 'dinner', p.partySize, Math.max(2, entry - 8 - Math.floor(r() * 20)), 'DINNER-' + (c + 1), staffNames[c]!)
-    }
+    ev(p.id, p.partySize, entry, gates[Math.floor(r() * 2)]!, r() < 0.5 ? 'Sneha P.' : 'Kiran B.')
   }
   return { parties, events }
 }

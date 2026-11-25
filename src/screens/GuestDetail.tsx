@@ -15,8 +15,8 @@ function Timeline({ events, empty }: { events: ScanEvent[]; empty: string }) {
     <div className="tl">
       {events.map((e) => {
         const isVoid = e.action === 'void'
-        const icon: IconName = isVoid ? 'undo' : e.checkpoint === 'dinner' ? 'utensils' : 'login'
-        const title = isVoid ? 'Undone' : e.checkpoint === 'dinner' ? 'Served ' + e.qty : 'Checked in · ' + e.qty
+        const icon: IconName = isVoid ? 'undo' : 'login'
+        const title = isVoid ? 'Undone' : 'Checked in · ' + e.qty
         return (
           <div key={e.id} className="tl-i">
             <span className="dotc" style={{ background: isVoid ? 'var(--warn-bg)' : 'var(--fill)', color: isVoid ? 'var(--warn-text)' : 'var(--text2)' }}><Icon name={icon} size="s" /></span>
@@ -48,7 +48,6 @@ export function GuestDetailScreen() {
     )
   const { party, events, state } = view
   const sorted = events.slice().sort((a, b) => a.clientAt - b.clientAt)
-  const dinner = sorted.filter((e) => e.checkpoint === 'dinner')
   const entry = sorted.filter((e) => e.checkpoint === 'entry')
   const staff = hasRole(session, 'staff')
 
@@ -78,12 +77,6 @@ export function GuestDetailScreen() {
         </div>
       </Group>
       {entry.length > 1 && <div style={{ marginTop: 12 }}><Timeline events={entry} empty="" /></div>}
-
-      <div className="gh-h" style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between' }}>
-        <span>Dinner</span>
-        <span>{state.served} of {state.entitled} served</span>
-      </div>
-      <Timeline events={dinner} empty="No meals served yet." />
 
       {staff ? (
         <div className="px" style={{ paddingTop: 16 }}>

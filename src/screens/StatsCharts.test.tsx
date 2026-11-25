@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { arrivalSeries, cellKey, dinnerSeries } from '../lib/stats.ts'
+import { arrivalSeries, cellKey } from '../lib/stats.ts'
 import { ev, MIN, party, rowsOf, T0 } from '../test/fixtures.ts'
-import { Card, DinnerChart, Donut, Grid, GridKey, Legend, Pair, ProgressRow, StackBar, Timeline } from './StatsCharts.tsx'
+import { Card, Donut, Grid, GridKey, Legend, Pair, ProgressRow, StackBar, Timeline } from './StatsCharts.tsx'
 
 afterEach(cleanup)
 
@@ -189,22 +189,3 @@ describe('Timeline', () => {
   })
 })
 
-describe('DinnerChart', () => {
-  const p = party({ children: 5 })
-  const evs = [ev(p.id, 'entry', 4, T0 + 5 * MIN), ev(p.id, 'dinner', 1, T0 + 35 * MIN), ev(p.id, 'dinner', 2, T0 + 65 * MIN)]
-  const series = dinnerSeries(rowsOf([p], evs), evs.filter((e) => e.checkpoint === 'dinner'), T0 + 70 * MIN)!
-  it('draws a bar and a queue point per slot and reads the latest numbers aloud', () => {
-    const { container } = render(<DinnerChart bars={series.bars} max={series.max} />)
-    expect(container.querySelectorAll('rect')).toHaveLength(2)
-    expect(container.querySelectorAll('circle')).toHaveLength(2)
-    expect(screen.getByRole('img', { name: /2 in the latest slot\. 1 checked in and not yet served/ })).toBeTruthy()
-  })
-  it('keeps a zero-meal slot visible and every bar inside the chart', () => {
-    const { container } = render(<DinnerChart bars={[{ start: T0, meals: 0, queue: 0 }, { start: T0 + 30 * MIN, meals: 5, queue: 9 }]} max={9} />)
-    for (const r of container.querySelectorAll('rect')) {
-      expect(Number(r.getAttribute('height'))).toBeGreaterThanOrEqual(2)
-      expect(Number(r.getAttribute('y')) + Number(r.getAttribute('height'))).toBeLessThanOrEqual(130.001)
-    }
-    for (const c of container.querySelectorAll('circle')) expect(Number(c.getAttribute('cy'))).toBeGreaterThanOrEqual(0)
-  })
-})

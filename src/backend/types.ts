@@ -46,7 +46,7 @@ export interface Backend {
   fetchChanges?(from: Cursors): Promise<Snapshot>
   pushBatch(items: OutboxItem[]): Promise<PushResult[]>
   heartbeat?(info: { deviceId: string; counter: string | null; pending: number; appVersion: string }): Promise<void>
-  /** The counters table (gates and dinner counters, active or retired). Demo mode has none: the built-in list applies. */
+  /** The counters table (the gate desks, active or retired). Demo mode has none: the built-in list applies. */
   listCounters?(): Promise<Counter[]>
   /** True when a real request succeeds. navigator.onLine alone is not trusted. */
   ping(): Promise<boolean>

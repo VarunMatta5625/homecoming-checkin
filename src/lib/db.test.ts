@@ -24,7 +24,7 @@ describe('local database', () => {
     const before = new Dexie(name)
     before.version(1).stores(STORES_V1)
     await before.table('parties').put(p)
-    await before.table('events').put(ev(p.id, 'dinner', 2, T0))
+    await before.table('events').put(ev(p.id, 'entry', 2, T0))
     await before.table('outbox').bulkPut([1, 2, 3].map((i) => ({ id: 'o' + i, type: 'event', payload: { i }, attempts: 0, createdAt: T0 + i })))
     before.close()
 

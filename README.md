@@ -6,7 +6,7 @@
 
 ### The whole reunion, checked in with one scan.
 
-Point a phone at a pass and get a clear answer in a second. Keep going when the signal drops. Make sure no one is turned away, and no one is served dinner twice.<br>
+Point a phone at a pass and get a clear answer in a second. Keep going when the signal drops. Make sure no one is turned away and everyone is counted once.<br>
 Built for **GITAM Homecoming 2026** (12 December 2026, Visakhapatnam), for the phones your volunteers already carry.
 
 ![Installs like an app](https://img.shields.io/badge/Installs-like%20an%20app-0d6b5f?style=flat-square)
@@ -14,7 +14,7 @@ Built for **GITAM Homecoming 2026** (12 December 2026, Visakhapatnam), for the p
 ![Google sign-in](https://img.shields.io/badge/Sign%20in-Google-0d6b5f?style=flat-square)
 ![Light and dark](https://img.shields.io/badge/Light%20%2B-dark-0d6b5f?style=flat-square)
 
-[Scanning](#one-scan-one-clear-answer) · [Dinner](#dinner-everyone-is-fed-once) · [Offline](#works-when-the-signal-does-not) · [Search and walk-ins](#find-anyone-add-anyone) · [Mistakes](#mistakes-happen-and-it-is-fine) · [Live stats](#know-whats-happening-as-it-happens) · [Admin](#run-the-list-from-your-phone) · [Privacy](#private-by-design)
+[Scanning](#one-scan-one-clear-answer) · [Offline](#works-when-the-signal-does-not) · [Search and walk-ins](#find-anyone-add-anyone) · [Mistakes](#mistakes-happen-and-it-is-fine) · [Live stats](#know-whats-happening-as-it-happens) · [Admin](#run-the-list-from-your-phone) · [Privacy](#private-by-design)
 
 </div>
 
@@ -22,14 +22,14 @@ Built for **GITAM Homecoming 2026** (12 December 2026, Visakhapatnam), for the p
 
 ## Why it exists
 
-Most of a reunion arrives in the same hour. Paper lists are slow, spreadsheets do not survive a crowded venue's Wi-Fi, and nobody wants an alumnus turned away at the gate or a family served twice at the counter.
+Most of a reunion arrives in the same hour. Paper lists are slow, spreadsheets do not survive a crowded venue's Wi-Fi, and nobody wants an alumnus turned away at the gate or counted twice.
 
-Homecoming Check-in replaces the clipboard with a phone. Every pass carries a QR code. Volunteers scan it at the gate and at the dinner counters, the app answers instantly, and the organisers watch the day unfold on a live dashboard.
+Homecoming Check-in replaces the clipboard with a phone. Every pass carries a QR code. Volunteers scan it at the gate, the app answers instantly, and the organisers watch the day unfold on a live dashboard.
 
 | | | |
 | --- | --- | --- |
-| **An answer in a second** | **Never stuck** | **Nobody served twice** |
-| The guest, their party and what to do next, in plain words and colour. | The guest list lives on the phone, so scanning works with no signal and catches up when it returns. | Servings are counted across every counter, so a family of four gets exactly four meals. |
+| **An answer in a second** | **Never stuck** | **Everyone counted once** |
+| The guest, their party and what to do next, in plain words and colour. | The guest list lives on the phone, so scanning works with no signal and catches up when it returns. | A party is checked in once, with a headcount, however many gates scan its pass. |
 
 ---
 
@@ -62,33 +62,6 @@ No camera, or a pass that will not scan? **Enter code instead** takes the code p
 
 ---
 
-## Dinner: everyone is fed once
-
-Switch the same screen to **Dinner** and each scan serves the party. The sheet shows how many have eaten and how many are left, so a table of four can be served in two rounds without confusion.
-
-<table>
-<tr>
-<td align="center" valign="top" width="25%">
-<img src="docs/screenshots/dinner-serve.png" width="200" alt="Serve the party"><br>
-<sub><b>Serve the party</b><br>1 of 4 served, 3 remaining. Serve as many as are at the counter.</sub>
-</td>
-<td align="center" valign="top" width="25%">
-<img src="docs/screenshots/dinner-already-served.png" width="200" alt="Already served"><br>
-<sub><b>Already served</b><br>All the meals are gone. The counter and the volunteer who served them are shown.</sub>
-</td>
-<td align="center" valign="top" width="25%">
-<img src="docs/screenshots/dinner-no-entry.png" width="200" alt="Check in first"><br>
-<sub><b>Check in first</b><br>No entry scan yet? Check them in right here, then serve.</sub>
-</td>
-<td align="center" valign="top" width="25%">
-<img src="docs/screenshots/dinner-flagged.png" width="200" alt="Served twice by mistake?"><br>
-<sub><b>Served twice by mistake?</b><br>If two counters served the same party while one was offline, staff are told and the guest is not blamed.</sub>
-</td>
-</tr>
-</table>
-
----
-
 ## Works when the signal does not
 
 Event venues are where mobile networks go to die, so the app does not depend on one.
@@ -111,7 +84,7 @@ When a phone is set up, it downloads the whole guest list once and keeps it. Eve
 </td>
 <td align="center" valign="top" width="25%">
 <img src="docs/screenshots/counter-picker.png" width="200" alt="Pick your station"><br>
-<sub><b>Pick your station</b><br>Gate desks and dinner counters, remembered for next time.</sub>
+<sub><b>Pick your station</b><br>Your gate desk, remembered for next time.</sub>
 </td>
 </tr>
 </table>
@@ -151,7 +124,7 @@ Guests lose passes, phones die and some alumni simply turn up. The app handles a
 </td>
 <td align="center" valign="top" width="25%">
 <img src="docs/screenshots/search-filter.png" width="200" alt="Filter the crowd"><br>
-<sub><b>Filter the crowd</b><br>Batch year, not checked in, not served.</sub>
+<sub><b>Filter the crowd</b><br>Batch year, and not checked in.</sub>
 </td>
 <td align="center" valign="top" width="25%">
 <img src="docs/screenshots/register.png" width="200" alt="Register a walk-in"><br>
@@ -184,7 +157,7 @@ Everyone taps the wrong guest at some point. The app expects it.
 </td>
 <td align="center" valign="top" width="33%">
 <img src="docs/screenshots/correct.png" width="250" alt="Staff can fix any record"><br>
-<sub><b>Staff can fix any record</b><br>Reset a guest’s entry or dinner. A reason is required.</sub>
+<sub><b>Staff can fix any record</b><br>Reset a guest’s check-in. A reason is required.</sub>
 </td>
 </tr>
 </table>
@@ -200,17 +173,13 @@ Staff get a live dashboard built from every phone that has checked in. Tap the *
 
 <table>
 <tr>
-<td align="center" valign="top" width="33%">
+<td align="center" valign="top" width="50%">
 <img src="docs/screenshots/stats-entry.png" width="250" alt="Arrivals"><br>
 <sub><b>Arrivals</b><br>How many are here against how many are expected, and arrivals every 15 minutes.</sub>
 </td>
-<td align="center" valign="top" width="33%">
+<td align="center" valign="top" width="50%">
 <img src="docs/screenshots/stats-who.png" width="250" alt="Who is here"><br>
 <sub><b>Who is here</b><br>A projection, walk-ins against pre-registered, and check-ins by gate.</sub>
-</td>
-<td align="center" valign="top" width="33%">
-<img src="docs/screenshots/stats-dinner.png" width="250" alt="Dinner so far"><br>
-<sub><b>Dinner so far</b><br>Meals served, the queue waiting for a meal, and a counter-by-counter rate.</sub>
 </td>
 </tr>
 </table>
@@ -227,14 +196,13 @@ Staff get a live dashboard built from every phone that has checked in. Tap the *
 </td>
 <td align="center" valign="top" width="33%">
 <img src="docs/screenshots/review.png" width="250" alt="Needs review"><br>
-<sub><b>Needs review</b><br>Parties served at two counters, served without a check-in, or possible duplicates.</sub>
+<sub><b>Needs review</b><br>Parties that may be listed twice, because they share a mobile number.</sub>
 </td>
 </tr>
 </table>
 
 A few details that matter on the day:
 
-- **Quiet counters** are called out, so a dinner counter that has stopped serving gets noticed.
 - **Estimates say they are estimates.** Where the gate counts heads rather than names, the split between alumni, spouses and children is shown as an estimate and labelled that way.
 - **Filter by batch year or school** and the numbers follow.
 
@@ -292,7 +260,7 @@ An alumni list is personal data, and the app is built to treat it that way.
 
 ## Easy on the eyes
 
-Light, dark or automatic, with a larger-text option for long shifts. The dinner counter in a dim hall looks as good as the gate at noon.
+Light, dark or automatic, with a larger-text option for long shifts. The gate in a dim hall looks as good as it does at noon.
 
 <table>
 <tr>
@@ -332,8 +300,8 @@ Light, dark or automatic, with a larger-text option for long shifts. The dinner 
 
 ## In numbers
 
-- **208** automated tests cover the maths behind the stats, the undo rules, the counters and the phone’s local database.
-- **93** database checks run against a real Postgres, signed in as real roles, on every change.
+- **178** automated tests cover the maths behind the stats, the undo rules, the counters and the phone’s local database.
+- **99** database checks run against a real Postgres, signed in as real roles, on every change.
 - A **5,000-guest** list loads in about a third of a second in those database tests.
 - **No application servers** to look after: the app is static files plus a managed database.
 

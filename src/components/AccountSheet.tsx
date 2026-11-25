@@ -16,18 +16,6 @@ import { Alert, Btn, Chip, Group, Icon, Seg, Sheet, Switch } from './ui.tsx'
 export function CounterPicker({ initial, onDone, onClose }: { initial: string | null; onDone: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState(initial)
   const counters = useCounters()
-  const sec = (title: string, kind: 'gate' | 'dinner') => (
-    <Group header={title}>
-      <div role="radiogroup" aria-label={title}>
-        {activeCounters(counters, kind).map((c) => (
-          <button key={c.code} type="button" className="cell" role="radio" aria-checked={code === c.code} onClick={() => setCode(c.code)}>
-            <span className="grow">{c.label}{c.kind === 'gate' ? ' · Entry' : ''}</span>
-            <span className={'radio' + (code === c.code ? ' on' : '')}>{code === c.code && <Icon name="check" size="s" />}</span>
-          </button>
-        ))}
-      </div>
-    </Group>
-  )
   return (
     <Sheet
       title="Choose counter"
@@ -44,8 +32,16 @@ export function CounterPicker({ initial, onDone, onClose }: { initial: string | 
         </Btn>
       }
     >
-      {sec('Gate', 'gate')}
-      {sec('Dinner counters', 'dinner')}
+      <Group header="Gate">
+        <div role="radiogroup" aria-label="Gate">
+          {activeCounters(counters).map((c) => (
+            <button key={c.code} type="button" className="cell" role="radio" aria-checked={code === c.code} onClick={() => setCode(c.code)}>
+              <span className="grow">{c.label}</span>
+              <span className={'radio' + (code === c.code ? ' on' : '')}>{code === c.code && <Icon name="check" size="s" />}</span>
+            </button>
+          ))}
+        </div>
+      </Group>
       <div className="t-cap muted px5">Your counter is saved with every scan, so staff can trace it.</div>
     </Sheet>
   )
@@ -83,7 +79,7 @@ export function AccountSheet() {
         <Group>
           <button type="button" className="cell" onClick={() => setPicker(true)}>
             <span className="grow">Counter</span>
-            <span className="val">{p.mode === 'dinner' ? 'Dinner' : 'Entry'} · {counterLabel(p.counter ?? '')}</span>
+            <span className="val">{counterLabel(p.counter ?? '')}</span>
             <Icon name="chev-r" size="s" className="chev" />
           </button>
         </Group>

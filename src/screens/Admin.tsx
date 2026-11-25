@@ -134,7 +134,7 @@ export function AuditScreen() {
             <div key={e.id} className="rrow vtop">
               <div className="lead lead36" style={{ background: 'var(--warn-bg)', color: 'var(--warn-text)' }}><Icon name={e.method === 'staff' ? 'wrench' : 'undo'} size="m" /></div>
               <div className="grow stack" style={{ gap: 2 }}>
-                <span className="nm" style={{ whiteSpace: 'normal' }}>{(e.method === 'staff' ? 'Reset ' : 'Undid ') + e.checkpoint + ' · ' + (roster?.byId.get(e.partyId)?.leadName ?? 'Unknown')}</span>
+                <span className="nm" style={{ whiteSpace: 'normal' }}>{(e.method === 'staff' ? 'Reset check-in' : 'Undid check-in') + ' · ' + (roster?.byId.get(e.partyId)?.leadName ?? 'Unknown')}</span>
                 <span className="meta" style={{ whiteSpace: 'normal' }}>{fmtTime(e.clientAt)} · {e.actorName} · {counterLabel(e.counter)}</span>
                 <span className="meta" style={{ whiteSpace: 'normal' }}>Reason: {e.reason}</span>
               </div>

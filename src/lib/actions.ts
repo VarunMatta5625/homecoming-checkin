@@ -4,7 +4,7 @@ import { mobileDigits } from './format.ts'
 import { newId, newPassCode, newQrToken } from './ids.ts'
 import { prefs } from './prefs.ts'
 import { kickSync, net, nextStamp } from './sync.ts'
-import type { Checkpoint, Method, Parking, Party, PartyContact, ScanEvent, Session, Ynm } from './types.ts'
+import type { Method, Parking, Party, PartyContact, ScanEvent, Session, Ynm } from './types.ts'
 import { liveEvents } from './state.ts'
 import { hasRole } from './types.ts'
 
@@ -42,9 +42,6 @@ async function commit(events: ScanEvent[], party?: { party: Party; contact: Part
 export const checkIn = (partyId: string, qty: number, method: Method) =>
   commit([build({ partyId, checkpoint: 'entry', action: 'pass', qty, method })]).then((e) => e[0]!)
 
-export const serveDinner = (partyId: string, qty: number, method: Method) =>
-  commit([build({ partyId, checkpoint: 'dinner', action: 'pass', qty, method })]).then((e) => e[0]!)
-
 /** Undo = a compensating void event. The original row is never touched. */
 export async function voidEvent(original: ScanEvent, reason: string, method: Method = 'search') {
   const already = await db.events.where('partyId').equals(original.partyId).filter((e) => e.action === 'void' && e.voidsEventId === original.id).count()
@@ -52,12 +49,12 @@ export async function voidEvent(original: ScanEvent, reason: string, method: Met
   await commit([build({ partyId: original.partyId, checkpoint: original.checkpoint, action: 'void', qty: 0, voidsEventId: original.id, reason, method })])
 }
 
-/** Staff reset: void every live event of one checkpoint (or both), reason required. */
-export async function resetCheckpoints(partyId: string, checkpoints: Checkpoint[], reason: string) {
+/** Staff reset: void every live check-in of one party, reason required. */
+export async function resetEntry(partyId: string, reason: string) {
   const s = prefs.get().session
   if (!hasRole(s, 'staff')) throw new Error('Only staff can correct records')
   if (!reason.trim()) throw new Error('A reason is required')
-  const live = liveEvents(await db.events.where('partyId').equals(partyId).toArray()).filter((e) => checkpoints.includes(e.checkpoint))
+  const live = liveEvents(await db.events.where('partyId').equals(partyId).toArray())
   if (!live.length) return
   await commit(live.map((o) => build({ partyId, checkpoint: o.checkpoint, action: 'void', qty: 0, voidsEventId: o.id, reason, method: 'staff' })))
 }
@@ -103,7 +100,6 @@ export async function registerOnSpot(input: RegisterInput) {
     spouse: input.spouse,
     children: input.children,
     partySize: 1 + (input.spouse === 'no' ? 0 : 1) + input.children,
-    entitledOverride: null,
     parking: input.parking,
     possibleDuplicateOf: input.duplicateOf,
     deletedAt: null,

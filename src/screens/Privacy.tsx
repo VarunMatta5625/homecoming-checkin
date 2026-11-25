@@ -19,7 +19,7 @@ export function PrivacyScreen() {
 
       <h2 className="t-head" style={{ margin: '14px 0 0' }}>What this app is</h2>
       <p className="t-body" style={{ margin: 0 }}>
-        This app is used by the volunteers and staff of the GITAM {EVENT_NAME} event to check alumni guests in at the gate and to serve dinner. It is only for
+        This app is used by the volunteers and staff of the GITAM {EVENT_NAME} event to check alumni guests in at the gate. It is only for
         people the organisers have approved. Guests do not use it.
       </p>
 
@@ -35,7 +35,7 @@ export function PrivacyScreen() {
         registers at the desk gives these details to the volunteer.
       </p>
       <p className="t-body" style={{ margin: 0 }}>
-        <b>Activity.</b> Each check-in, dinner serving, undo and correction is stored with the time, the counter, who did it, and a random identifier for the
+        <b>Activity.</b> Each check-in, undo and correction is stored with the time, the counter, who did it, and a random identifier for the
         phone. Phones also report their app version, their counter and how many changes are waiting to sync.
       </p>
 

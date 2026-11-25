@@ -14,11 +14,22 @@ Database for the check-in app: schema, row-level security and the RPCs the app c
 | `migrations/20261122000006_signup_hook.sql` | `hook_before_user_created`: only emails on the `staff_users` list can create an account. Needs one dashboard step, see below (existing projects: run just this file) |
 | `migrations/20261122000007_guest_import.sql` | `admin_import_guests` (load a whole guest list in one go, Add or Replace) and `admin_export_passes` (pass codes and contacts, audited). Admin only (existing projects: run just this file) |
 | `migrations/20261122000008_undo_and_heartbeat.sql` | A volunteer's undo is refused if dated before its scan, and an undo from a different phone than the scan is judged by the server's clock; `device_heartbeat` rows are keyed on device and user so one user can't overwrite another's (existing projects: run just this file; the app works with or without it) |
+| `migrations/20261122000009_checkin_only.sql` | The app no longer serves dinner. `party_state` loses its dinner columns and entitlement is the party size, the server refuses any event that is not an entry check-in, and the dinner counters are switched off. Nothing is deleted. Apply only when the check-in-only app is deployed (see below) |
 | `seed_admin.sql` | Your first admin (edit the email first) |
 | `seed_dev.sql` | Fake test accounts and 120 fake parties. Testing only |
-| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 93 acceptance checks |
+| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 99 acceptance checks |
 
 When you add a function, end its migration with `revoke execute on function ... from public, anon;` and grant it to `authenticated` by name. Postgres lets everyone run a new function by default; the checks fail if one is open to the signed-out role.
+
+## Moving an existing project to check-in only
+
+Migrations 1 to 8 work with both the earlier app (entry and dinner) and the check-in-only app, so the check-in-only app can run against the same project while the earlier one is still deployed. **Migration 9 does not.** Apply it only when you retire the earlier app, and in this order:
+
+1. Every phone has synced (no "Waiting to sync" on any phone). The server will refuse dinner scans that arrive after migration 9.
+2. Deploy the check-in-only app.
+3. Run `migrations/20261122000009_checkin_only.sql` in the SQL editor.
+
+It deletes nothing, so old dinner scans stay in the log. It is not reversible by a script: to go back, restore `party_state` and `_push_event` from migrations 1 and 8.
 
 ## Turn on the sign-up hook
 

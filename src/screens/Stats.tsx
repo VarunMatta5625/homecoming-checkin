@@ -8,14 +8,13 @@ import { useCounters } from '../lib/counters.ts'
 import { ago, fmtTime, plural } from '../lib/format.ts'
 import { useNow, useRoster, useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
-import { liveEvents } from '../lib/state.ts'
-import { arrivalSeries, computeStats, counterRows, dinnerSeries, filterOn, gateRows, filterOptions, matches, NO_FILTER, pct, type Filter, type Row, type Stats } from '../lib/stats.ts'
+import { arrivalSeries, computeStats, filterOn, gateRows, filterOptions, matches, NO_FILTER, pct, type Filter, type Row, type Stats } from '../lib/stats.ts'
 import { createStore } from '../lib/store.ts'
 import { kickSync, retryFailed } from '../lib/sync.ts'
-import { Card, Donut, DinnerChart, Grid, GridKey, Legend, Pair, ProgressRow, SortToggle, StackBar, Timeline, type Seg as SegData } from './StatsCharts.tsx'
+import { Card, Donut, Grid, GridKey, Legend, Pair, ProgressRow, SortToggle, StackBar, Timeline, type Seg as SegData } from './StatsCharts.tsx'
 import { FilterSheet } from './StatsFilter.tsx'
 
-type Tab = 'entry' | 'dinner' | 'breakdown'
+type Tab = 'entry' | 'breakdown'
 
 /** Kept while the app is open, so Review and back doesn't lose the tab or the filter. */
 const view = createStore<{ tab: Tab; filter: Filter }>({ tab: 'entry', filter: NO_FILTER })
@@ -60,11 +59,7 @@ export function StatsScreen() {
 
   const all = useMemo<Row[] | null>(() => (roster ? roster.parties.map((party) => ({ party, st: roster.states.get(party.id)! })) : null), [roster])
   const rows = useMemo(() => all?.filter((r) => matches(r.party, filter)) ?? [], [all, filter])
-  const s = useMemo(() => computeStats(rows, roster?.events ?? []), [rows, roster])
-  const live = useMemo(() => {
-    const ids = new Set(rows.map((r) => r.party.id))
-    return liveEvents(roster?.events ?? []).filter((e) => ids.has(e.partyId))
-  }, [rows, roster])
+  const s = useMemo(() => computeStats(rows), [rows])
   const options = useMemo(() => (all ? filterOptions(all.map((r) => r.party), (id) => roster!.states.get(id)!.entitled) : { years: [], schools: [] }), [all, roster])
 
   const setFilter = (next: Filter, title: string, sub: string) => {
@@ -74,7 +69,7 @@ export function StatsScreen() {
   }
   const pick = (patch: Partial<Filter>) => {
     const next = { ...view.get().filter, ...patch }
-    const r = computeStats((all ?? []).filter((x) => matches(x.party, next)), [])
+    const r = computeStats((all ?? []).filter((x) => matches(x.party, next)))
     setFilter(next, 'Filtered to ' + filterText(next), r.arrived + ' of ' + r.expected + ' arrived')
   }
   const clear = () => setFilter(NO_FILTER, 'Filters cleared', 'Showing all ' + (all ?? []).reduce((n, r) => n + r.st.entitled, 0) + ' guests')
@@ -95,16 +90,8 @@ export function StatsScreen() {
   }
 
   // A retired counter drops off the list, unless it already has scans that count in the totals.
-  const shown = (kind: 'gate' | 'dinner', used: (code: string) => boolean) => counters.filter((c) => c.kind === kind && (c.active || used(c.code)))
-  const gates = gateRows(shown('gate', (code) => rows.some((r) => r.st.enteredCounter === code)), rows)
-  const tables = counterRows(shown('dinner', (code) => live.some((e) => e.checkpoint === 'dinner' && e.counter === code)), live, 'dinner', now)
-  const anyActive = tables.some((c) => c.active)
+  const gates = gateRows(counters.filter((c) => c.active || rows.some((r) => r.st.enteredCounter === c.code)), rows)
   const alerts: Alert[] = []
-  if (anyActive) {
-    const quiet = tables.filter((c) => c.n > 0 && !c.active && c.lastAt)
-    if (quiet.length === 1) alerts.push({ icon: 'clock', text: quiet[0]!.label + ' quiet for ' + Math.floor((now - quiet[0]!.lastAt!) / 60000) + ' min', go: () => view.set({ tab: 'dinner' }) })
-    else if (quiet.length > 1) alerts.push({ icon: 'clock', text: quiet.length + ' counters quiet for 10+ min', go: () => view.set({ tab: 'dinner' }) })
-  }
   if (status.failed) alerts.push({ icon: 'alert', text: plural(status.failed, 'sync') + ' failed on this phone. Tap to retry', go: () => void retryFailed() })
   if (s.review) alerts.push({ icon: 'flag', text: plural(s.review, 'party', 'parties') + ' need review', go: () => navigate('/stats/review') })
 
@@ -125,7 +112,6 @@ export function StatsScreen() {
           <button type="button" className="st-mini" aria-label="Show all numbers" onClick={() => window.scrollTo({ top: 0 })}>
             <span><b>{s.arrived}</b> here</span>
             <span><b>{arrivedPct}%</b> of {s.expected}</span>
-            <span><b>{s.served}</b> meals</span>
             {s.review > 0 && <span><Icon name="flag" size="s" /> {s.review}</span>}
             {alerts.length > 0 && <span style={{ color: 'var(--warn-text)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="alert" size="s" />{alerts.length}<span className="sr"> {alerts.length === 1 ? 'alert' : 'alerts'}</span></span>}
           </button>
@@ -134,7 +120,6 @@ export function StatsScreen() {
             <div className="st-tiles">
               <div className="st-tile"><span className="n">{s.arrived}</span><span className="l">On campus now</span></div>
               <div className="st-tile"><span className="n">{arrivedPct}%</span><span className="l">{s.arrived} of {s.expected} arrived</span></div>
-              <div className="st-tile"><span className="n">{s.served}</span><span className="l">Meals served</span></div>
               {s.review > 0 ? (
                 <button type="button" className="st-tile warn" onClick={() => navigate('/stats/review')}><span className="n">{s.review}</span><span className="l"><Icon name="flag" size="s" /> Review ›</span></button>
               ) : (
@@ -180,7 +165,7 @@ export function StatsScreen() {
           <div className="st-filtered"><span>Filtered: <b>{filterText(filter)}</b></span><span className="muted" style={{ marginLeft: 'auto' }}>Partial numbers</span></div>
         )}
         <div className="px">
-          <Seg<Tab> label="Stats view" value={tab} onChange={(t) => view.set({ tab: t })} options={[{ value: 'entry', label: 'Entry' }, { value: 'dinner', label: 'Dinner' }, { value: 'breakdown', label: 'Breakdown' }]} />
+          <Seg<Tab> label="Stats view" value={tab} onChange={(t) => view.set({ tab: t })} options={[{ value: 'entry', label: 'Entry' }, { value: 'breakdown', label: 'Breakdown' }]} />
         </div>
       </div>
 
@@ -191,8 +176,6 @@ export function StatsScreen() {
           </Empty>
         ) : tab === 'entry' ? (
           <EntryTab s={s} rows={rows} gates={gates} now={now} />
-        ) : tab === 'dinner' ? (
-          <DinnerTab s={s} rows={rows} live={live} tables={tables} now={now} />
         ) : (
           <BreakdownTab s={s} all={all} filter={filter} pick={pick} />
         )}
@@ -292,50 +275,6 @@ function EntryTab({ s, rows, gates, now }: { s: Stats; rows: Row[]; gates: Retur
   )
 }
 
-function DinnerTab({ s, rows, live, tables, now }: { s: Stats; rows: Row[]; live: ReturnType<typeof liveEvents>; tables: ReturnType<typeof counterRows>; now: number }) {
-  const [all, setAll] = useState(false)
-  const series = useMemo(() => dinnerSeries(rows, live, now), [rows, live, now])
-  const segs: SegData[] = [
-    { n: s.served, cls: 'seg-arr', label: 'Served' },
-    { n: s.waiting, cls: 'seg-pend', label: 'Checked in, not served' },
-    { n: Math.max(0, s.expected - s.served - s.waiting), cls: 'seg-none', label: 'Not yet arrived' },
-  ]
-  const sorted = [...tables].sort((a, b) => Number(!!b.lastAt && !b.active) - Number(!!a.lastAt && !a.active) || b.n - a.n)
-  const shown = all ? sorted : sorted.slice(0, 4)
-  const max = Math.max(1, ...tables.map((t) => t.n))
-  return (
-    <>
-      <Card title="Dinner so far" sub={'of ' + s.expected + ' expected'}>
-        <StackBar tall aria={s.served + ' served, ' + s.waiting + ' checked in and not served, ' + segs[2]!.n + ' not yet arrived'} segs={segs} />
-        <Legend segs={segs} />
-        <div className="st-link" style={{ cursor: 'default' }}>
-          <span><b>Dinner overrides</b><br /><span className="t-cap muted">Staff let a guest eat without the usual check</span></span>
-          <span className="big-num" style={{ fontSize: 24 }}>{s.overrides}</span>
-        </div>
-      </Card>
-      <Card title="Meals per 30 min" sub="one scale: people">
-        {series ? <DinnerChart bars={series.bars} max={series.max} /> : <span className="t-sub muted">No meals served yet. The first scan shows up here.</span>}
-      </Card>
-      <Card title="Meals by counter" sub="last 10 min rate">
-        <div className="stack" style={{ gap: 6 }}>
-          {shown.map((c) => {
-            const quiet = !!c.lastAt && !c.active
-            return (
-              <div key={c.code} className="crow">
-                <div className="cl"><b>{c.label}</b><span>{quiet ? 'Quiet ' + Math.floor((now - c.lastAt!) / 60000) + ' min' : c.lastAt ? c.rate.toFixed(1) + '/min' : 'No scans yet'}</span></div>
-                <span className="bar"><i style={{ width: (c.n / max) * 100 + '%' }} /></span>
-                <span className="n">{c.n}</span>
-                {c.active ? <span className="chip ok"><Icon name="check-circle" size="s" />Active</span> : quiet ? <span className="chip warn"><Icon name="clock" size="s" />Quiet</span> : <span className="chip neutral">Idle</span>}
-              </div>
-            )
-          })}
-        </div>
-        {tables.length > 4 && <Btn kind="plain" onClick={() => setAll(!all)}>{all ? 'Show fewer' : 'Show all ' + tables.length + ' counters'}</Btn>}
-      </Card>
-    </>
-  )
-}
-
 function BreakdownTab({ s, all, filter, pick }: { s: Stats; all: Row[]; filter: Filter; pick: (p: Partial<Filter>) => void }) {
   const [yearSort, setYearSort] = useState<'year' | 'pct'>('year')
   const [schoolSort, setSchoolSort] = useState<'size' | 'pct'>('size')
@@ -347,7 +286,7 @@ function BreakdownTab({ s, all, filter, pick }: { s: Stats; all: Row[]; filter: 
   const schools = [...s.schools].sort(schoolSort === 'size' ? (a, b) => b.exp - a.exp : (a, b) => pct(a.arr, a.exp) - pct(b.arr, b.exp) || b.exp - a.exp)
 
   // The grid always shows everyone and rings the cells inside the filter, so a tap is never a dead end.
-  const grid = useMemo(() => computeStats(all, []), [all])
+  const grid = useMemo(() => computeStats(all), [all])
   const gridYears = moreGrid ? grid.years.map((y) => y.year) : grid.years.slice(0, 6).map((y) => y.year)
   const gridSchools = grid.schools.map((x) => x.key)
   const sel = (y: number, sc: string) => filterOn(filter) && (!filter.years.length || filter.years.includes(y)) && (!filter.schools.length || filter.schools.includes(sc))

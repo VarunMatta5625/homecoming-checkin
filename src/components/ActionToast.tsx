@@ -7,7 +7,7 @@ import type { ScanEvent } from '../lib/types.ts'
 import { Toast } from './ui.tsx'
 import { UndoSheet } from './UndoSheet.tsx'
 
-/** Confirmation after a serve or check-in, with Undo until the window closes. */
+/** Confirmation after a check-in, with Undo until the window closes. */
 export function ActionToast({ hidden }: { hidden?: boolean }) {
   const { last } = ui.use()
   const now = useNow(1000)
@@ -15,7 +15,7 @@ export function ActionToast({ hidden }: { hidden?: boolean }) {
   const [undo, setUndo] = useState<ScanEvent | null>(null)
 
   if (undo && view)
-    return <UndoSheet event={undo} who={view.party.leadName} detail={view.state.served + ' of ' + view.state.entitled + ' served'} onClose={() => setUndo(null)} onUndone={() => { setUndo(null); ui.set({ last: null }) }} />
+    return <UndoSheet event={undo} who={view.party.leadName} detail={'Party of ' + view.state.entitled} onClose={() => setUndo(null)} onUndone={() => { setUndo(null); ui.set({ last: null }) }} />
 
   if (!last || hidden || now > last.until + 4000) return null
   // Zero if the phone's clock went back past the scan: the server would refuse that undo.

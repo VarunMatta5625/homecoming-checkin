@@ -30,7 +30,7 @@ export function ActivityScreen() {
     const voidsBy = new Map<string, ScanEvent>()
     for (const e of evs) if (e.action === 'void' && e.voidsEventId) voidsBy.set(e.voidsEventId, e)
     return {
-      mine: evs.filter((e) => e.deviceId === p.deviceId && e.action === 'pass').sort((a, b) => b.clientAt - a.clientAt),
+      mine: evs.filter((e) => e.deviceId === p.deviceId && e.action === 'pass' && e.checkpoint === 'entry').sort((a, b) => b.clientAt - a.clientAt),
       voids: voidsBy,
       voided: new Set(voidsBy.keys()),
     }
@@ -49,15 +49,14 @@ export function ActivityScreen() {
     const v = voids.get(e.id)
     const st = undoStatus(e, p.session, voided, now, p.deviceId)
     const left = undoSecondsLeft(e, now)
-    const isServe = e.checkpoint === 'dinner'
-    const meta = fmtTime(e.clientAt) + ' · ' + (v ? 'undone: ' + (v.reason ?? '').toLowerCase() : isServe ? counterLabel(e.counter) : 'party of ' + e.qty)
+    const meta = fmtTime(e.clientAt) + ' · ' + (v ? 'undone: ' + (v.reason ?? '').toLowerCase() : 'party of ' + e.qty)
     return (
       <div key={e.id} className={'rrow' + (v ? ' struck' : '')}>
         <div className="lead lead36" style={{ background: 'var(--tint-bg)', color: 'var(--tint)' }}>
-          <Icon name={isServe ? 'utensils' : 'login'} size="m" />
+          <Icon name="login" size="m" />
         </div>
         <div className="grow stack" style={{ gap: 2 }}>
-          <span className="nm" style={{ whiteSpace: 'normal' }}>{(isServe ? 'Served ' + e.qty : 'Checked in') + ' · ' + name}</span>
+          <span className="nm" style={{ whiteSpace: 'normal' }}>{'Checked in · ' + name}</span>
           <span className="meta" style={{ whiteSpace: 'normal' }}>
             {meta}
             {errFor(e.id) ? ' · ' + errFor(e.id) : ''}
@@ -91,7 +90,7 @@ export function ActivityScreen() {
         </div>
       )}
       {mine.length === 0 ? (
-        <Empty icon="history" title="No scans yet" body="Guests you check in or serve will show up here. You can undo anything from this list.">
+        <Empty icon="history" title="No scans yet" body="Guests you check in will show up here. You can undo anything from this list.">
           <Btn icon="scan" onClick={() => navigate('/scan', { replace: true })}>Start scanning</Btn>
         </Empty>
       ) : (
@@ -115,7 +114,7 @@ export function ActivityScreen() {
       )}
 
       {undoEvt && undoParty && undoState && (
-        <UndoSheet event={undoEvt} who={undoParty.leadName} detail={undoState.served + ' of ' + undoState.entitled + ' served'} onClose={() => setUndoEvt(null)} onUndone={() => setUndoEvt(null)} />
+        <UndoSheet event={undoEvt} who={undoParty.leadName} detail={'Party of ' + undoState.entitled} onClose={() => setUndoEvt(null)} onUndone={() => setUndoEvt(null)} />
       )}
       {expired && (
         <Alert

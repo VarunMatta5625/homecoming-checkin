@@ -37,7 +37,6 @@ FIELDS = [
     ('Children', 'Optional', 'A whole number from 0 to 6. Blank means 0.', '2'),
     ('Parking', 'Optional', 'None, 2-wheeler or 4-wheeler. Blank means None.', '4-wheeler'),
     ('Accommodation', 'Optional', 'Yes, No or Maybe, or blank.', 'No'),
-    ('Dinner override', 'Optional', 'Leave blank unless this guest should get a different number of dinners than the party size (1 + spouse + children). A whole number from 0 to 30.', ''),
 ]
 
 
@@ -117,14 +116,14 @@ for r in [
 ]:
     ex.append([P(c, small) for c in r])
 story += [table(ex, [27 * mm, 17 * mm, 28 * mm, 34 * mm, 18 * mm, 15 * mm, 16 * mm, 19 * mm]),
-          P('Only 8 of the 12 columns are shown. The rest (Department, Email, Accommodation, Dinner override) work the same way.', small)]
+          P('Only 8 of the 11 columns are shown. The rest (Department, Email, Accommodation) work the same way.', small)]
 
 story += [
     P('Add or Replace', h2),
     bullets([
         '<b>Add</b> keeps the guests already in the app and adds the new ones. Use it for the first real import into an empty list, for splitting a very large file, or for late registrations.',
         '<b>Replace</b> removes every guest now in the app, then adds the file. Use it to throw away the practice guests and load the real list, or to start again after a mistake.',
-        'Replace is refused once any check-in or dinner has been recorded, and once the event is marked live. This protects real scan history. '
+        'Replace is refused once any check-in has been recorded, and once the event is marked live. This protects real scan history. '
         'While testing, clear the test activity first (the database README has the steps), then use Replace.',
         'One file can hold up to 10,000 guests. Either everything is imported or nothing is: a file with a problem never half-loads.',
     ]),

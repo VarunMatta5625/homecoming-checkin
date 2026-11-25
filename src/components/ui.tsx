@@ -243,26 +243,6 @@ export function Toast({ title, sub, undo, onUndo }: { title: string; sub: string
   )
 }
 
-/** Sentence uses `served`. Bar: `done` segments are grey, the next `now` segments are maroon (serving now). */
-export function PartyCounter({ total, served, done = served, now = 0 }: { total: number; served: number; done?: number; now?: number }) {
-  const shown = Math.min(total, done)
-  return (
-    <div className="stack g3">
-      <div className="pc-label">
-        <span>
-          {served} of {total} served
-        </span>
-        <b>{Math.max(0, total - served)} remaining</b>
-      </div>
-      <div className="pc" aria-hidden="true">
-        {Array.from({ length: Math.max(total, served) }, (_, k) => (
-          <i key={k} className={k < shown ? 'done' : k < shown + now ? 'now' : ''} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export function ResultHead({ kind, icon, label, sub }: { kind: 'ok' | 'warn' | 'bad' | 'neutral'; icon: IconName; label: string; sub?: string }) {
   return (
     <div className={'rhead ' + kind}>

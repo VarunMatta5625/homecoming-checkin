@@ -46,7 +46,6 @@ const toParty = (r: Row): Party => ({
   spouse: r.spouse,
   children: r.children,
   partySize: r.party_size,
-  entitledOverride: r.entitled_override,
   parking: r.parking,
   possibleDuplicateOf: r.possible_duplicate_of,
   deletedAt: r.deleted_at,
@@ -88,7 +87,8 @@ async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Pr
     if (error) fail(error)
     const d = data as { parties: Row[]; events: Row[]; party_cursor: number; event_cursor: number; more: boolean }
     parties.push(...d.parties.map(toParty))
-    events.push(...d.events.map(toEvent))
+    // The shared database may still hold dinner scans from the earlier version of the app. This app only knows entry.
+    events.push(...d.events.filter((r) => r.checkpoint === 'entry').map(toEvent))
     cur.party = d.party_cursor
     cur.event = d.event_cursor
     onPage?.(parties.length)

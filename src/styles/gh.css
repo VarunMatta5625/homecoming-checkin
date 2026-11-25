@@ -121,12 +121,6 @@
 .gmeta{font-size:17px;line-height:22px;color:var(--text2)}
 
 /* party counter */
-.pc{display:flex;gap:6px}
-.pc i{flex:1;height:10px;border-radius:5px;background:var(--fill)}
-.pc i.done{background:var(--text2)}
-.pc i.now{background:var(--tint)}
-.pc-label{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;line-height:20px}
-.pc-label b{font-size:17px}
 
 /* key/values */
 .kv{display:flex;justify-content:space-between;gap:12px;font-size:17px;line-height:22px;padding:11px 16px;background:var(--card)}
@@ -195,7 +189,7 @@
 .hap i.s{width:14px}.hap i.l{width:56px}
 /* Dynamic Type ~130% */
 .xl .t-body,.xl .cell,.xl .kv,.xl .gmeta{font-size:22px;line-height:28px}
-.xl .t-sub,.xl .rrow .meta,.xl .rsub,.xl .pc-label{font-size:20px;line-height:25px}
+.xl .t-sub,.xl .rrow .meta,.xl .rsub{font-size:20px;line-height:25px}
 .xl .t-cap,.xl .gh-h,.xl .gh-f,.xl .chip,.xl .pill{font-size:17px;line-height:22px}
 .xl .t-head,.xl .rrow .nm,.xl .btn{font-size:22px;line-height:28px}
 .xl .rlabel,.xl .t-title{font-size:28px;line-height:34px}

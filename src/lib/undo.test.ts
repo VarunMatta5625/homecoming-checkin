@@ -9,7 +9,7 @@ const here = 'd1'
 const W = UNDO_WINDOW_S * 1000
 resetIds()
 const p = party()
-const scan = (over = {}) => ev(p.id, 'dinner', 1, T0, { actorId: 'u1', deviceId: here, ...over })
+const scan = (over = {}) => ev(p.id, 'entry', 1, T0, { actorId: 'u1', deviceId: here, ...over })
 const none = new Set<string>()
 
 describe('undoStatus', () => {

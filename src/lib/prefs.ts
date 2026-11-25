@@ -4,9 +4,8 @@ import type { Session } from './types.ts'
 
 export interface Prefs {
   deviceId: string
-  /** Counter code, e.g. DINNER-4 or GATE-2. Saved with every scan. */
+  /** Counter code, e.g. GATE-2. Saved with every scan. */
   counter: string | null
-  mode: 'entry' | 'dinner'
   theme: 'auto' | 'light' | 'dark'
   bigText: boolean
   session: Session | null
@@ -28,7 +27,6 @@ export interface Prefs {
 const defaults: Prefs = {
   deviceId: newId(),
   counter: null,
-  mode: 'dinner',
   theme: 'auto',
   bigText: false,
   session: null,

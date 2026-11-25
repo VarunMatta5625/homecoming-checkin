@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ev, MIN, party, resetIds, rowsOf, T0, voidOf } from '../test/fixtures.ts'
+import { ev, legacyDinner, MIN, party, resetIds, rowsOf, T0, voidOf } from '../test/fixtures.ts'
 import { BUILTIN_COUNTERS as COUNTERS } from './config.ts'
-import { arrivalSeries, bucket, cellKey, computeStats, counterRows, decadeOf, dinnerSeries, filterOn, filterOptions, gateRows, isSmall, matches, NO_FILTER, pct, schoolCode, schoolKey } from './stats.ts'
-import { liveEvents } from './state.ts'
+import { arrivalSeries, bucket, cellKey, computeStats, decadeOf, filterOn, filterOptions, gateRows, isSmall, matches, NO_FILTER, pct, schoolCode, schoolKey } from './stats.ts'
 
 beforeEach(resetIds)
 
@@ -84,8 +83,8 @@ describe('filter', () => {
 
 describe('computeStats: empty', () => {
   it('returns zeros and empty lists', () => {
-    const s = computeStats([], [])
-    expect([s.guests, s.parties, s.expected, s.arrived, s.served, s.waiting, s.notArrived, s.review, s.overrides]).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0])
+    const s = computeStats([])
+    expect([s.guests, s.parties, s.expected, s.arrived, s.notArrived, s.review]).toEqual([0, 0, 0, 0, 0, 0])
     expect(s.years).toEqual([])
     expect(s.schools).toEqual([])
     expect(s.decades).toEqual([])
@@ -98,17 +97,15 @@ describe('computeStats: empty', () => {
 })
 
 describe('computeStats: a small event', () => {
-  // p1 family of 4 (alumnus, spouse, 2 kids), 3 came, 2 ate. p2 alone, not here. p3 walk-in couple... party of 2, both here and fed, 4-wheeler.
+  // p1 family of 4 (alumnus, spouse, 2 kids), 3 came. p2 alone, not here. p3 walk-in party of 2, both here, 4-wheeler.
   const p1 = party({ batchYear: 2010, school: 'School of Technology', spouse: 'yes', children: 2, parking: 'two_wheeler' })
   const p2 = party({ batchYear: 2010, school: 'School of Science' })
   const p3 = party({ batchYear: 2015, school: null, source: 'onspot', children: 1, parking: 'four_wheeler' })
   const events = [
     ev(p1.id, 'entry', 3, T0 + MIN),
-    ev(p1.id, 'dinner', 2, T0 + 40 * MIN),
     ev(p3.id, 'entry', 2, T0 + 5 * MIN, { counter: 'GATE-2' }),
-    ev(p3.id, 'dinner', 2, T0 + 45 * MIN),
   ]
-  const s = computeStats(rowsOf([p1, p2, p3], events), events)
+  const s = computeStats(rowsOf([p1, p2, p3], events))
 
   it('totals', () => {
     expect(s.parties).toBe(3)
@@ -116,10 +113,6 @@ describe('computeStats: a small event', () => {
     expect(s.guests).toBe(s.expected)
     expect(s.arrived).toBe(5)
     expect(s.notArrived).toBe(2)
-    expect(s.served).toBe(4)
-  })
-  it('counts checked in and not yet served per party', () => {
-    expect(s.waiting).toBe(1)
   })
   it('groups by year and by school', () => {
     expect(s.years).toEqual([{ year: 2010, exp: 5, arr: 3 }, { year: 2015, exp: 2, arr: 2 }])
@@ -154,52 +147,42 @@ describe('computeStats: a small event', () => {
 })
 
 describe('computeStats: party edge cases', () => {
-  it('uses the entitled override, not the registered size', () => {
-    const p = party({ spouse: 'yes', children: 2, entitledOverride: 2 })
-    const s = computeStats(rowsOf([p], []), [])
-    expect(s.expected).toBe(2)
-    expect(s.split.exp).toEqual([1, 1, 0])
-  })
-  it('lets the override drop below the spouse slot', () => {
-    const p = party({ spouse: 'yes', children: 1, entitledOverride: 1 })
-    expect(computeStats(rowsOf([p], []), []).split.exp).toEqual([1, 0, 0])
+  it('expects the party size on the pass', () => {
+    const p = party({ spouse: 'yes', children: 2 })
+    const s = computeStats(rowsOf([p], []))
+    expect(s.expected).toBe(4)
+    expect(s.split.exp).toEqual([1, 1, 2])
   })
   it('treats "maybe" as a spouse slot', () => {
     const p = party({ spouse: 'maybe' })
     expect(p.partySize).toBe(2)
-    expect(computeStats(rowsOf([p], []), []).split.exp).toEqual([1, 1, 0])
+    expect(computeStats(rowsOf([p], [])).split.exp).toEqual([1, 1, 0])
   })
   it('puts children first when there is no spouse', () => {
     const p = party({ children: 2 })
     const e = ev(p.id, 'entry', 2, T0)
-    expect(computeStats(rowsOf([p], [e]), [e]).split).toEqual({ exp: [1, 0, 2], arr: [1, 0, 1] })
-  })
-  it('handles a party of zero (override 0) without negative numbers', () => {
-    const p = party({ entitledOverride: 0 })
-    const s = computeStats(rowsOf([p], []), [])
-    expect(s.expected).toBe(0)
-    expect(s.split.exp).toEqual([0, 0, 0])
+    expect(computeStats(rowsOf([p], [e])).split).toEqual({ exp: [1, 0, 2], arr: [1, 0, 1] })
   })
   it('counts more arrivals than expected without breaking the split or notArrived', () => {
     const p = party({ children: 1 })
     const e = ev(p.id, 'entry', 4, T0)
-    const s = computeStats(rowsOf([p], [e]), [e])
+    const s = computeStats(rowsOf([p], [e]))
     expect(s.arrived).toBe(4)
     expect(s.notArrived).toBe(0)
     expect(s.split.arr).toEqual([1, 0, 3])
   })
   it('does not count a party that has not entered as arrived, even if parked', () => {
     const p = party({ parking: 'four_wheeler' })
-    const s = computeStats(rowsOf([p], []), [])
+    const s = computeStats(rowsOf([p], []))
     expect(s.parking.four).toEqual({ exp: 1, arr: 0 })
     expect(s.arrived).toBe(0)
   })
   it('does not count a walk-in that has not entered', () => {
     const p = party({ source: 'onspot' })
-    expect(computeStats(rowsOf([p], []), []).walkIns).toEqual({ parties: 0, people: 0 })
+    expect(computeStats(rowsOf([p], [])).walkIns).toEqual({ parties: 0, people: 0 })
   })
   it('ignores parking "none"', () => {
-    const s = computeStats(rowsOf([party()], []), [])
+    const s = computeStats(rowsOf([party()], []))
     expect(s.parking).toEqual({ four: { exp: 0, arr: 0 }, two: { exp: 0, arr: 0 } })
   })
 })
@@ -209,79 +192,31 @@ describe('computeStats: scans and corrections', () => {
     const p = party({ children: 3 })
     const a = ev(p.id, 'entry', 2, T0)
     const b = ev(p.id, 'entry', 4, T0 + 10 * MIN, { counter: 'GATE-2' })
-    const s = computeStats(rowsOf([p], [a, b]), [a, b])
+    const s = computeStats(rowsOf([p], [a, b]))
     expect(s.arrived).toBe(2)
   })
   it('drops a voided entry and then counts the party as not arrived', () => {
     const p = party()
     const a = ev(p.id, 'entry', 1, T0)
     const evs = [a, voidOf(a, T0 + MIN)]
-    const s = computeStats(rowsOf([p], evs), evs)
+    const s = computeStats(rowsOf([p], evs))
     expect(s.arrived).toBe(0)
     expect(s.notArrived).toBe(1)
   })
-  it('drops a voided meal', () => {
-    const p = party({ children: 1 })
-    const e = ev(p.id, 'entry', 2, T0)
-    const d = ev(p.id, 'dinner', 2, T0 + 30 * MIN)
-    const evs = [e, d, voidOf(d, T0 + 31 * MIN)]
-    const s = computeStats(rowsOf([p], evs), evs)
-    expect(s.served).toBe(0)
-    expect(s.waiting).toBe(2)
-  })
-  it('adds up several servings of one party', () => {
-    const p = party({ children: 2 })
-    const evs = [ev(p.id, 'entry', 3, T0), ev(p.id, 'dinner', 1, T0 + 30 * MIN), ev(p.id, 'dinner', 1, T0 + 31 * MIN)]
-    const s = computeStats(rowsOf([p], evs), evs)
-    expect(s.served).toBe(2)
-    expect(s.waiting).toBe(1)
-  })
-  it('never lets waiting go negative when more were served than came in', () => {
-    const p = party({ children: 2 })
-    const evs = [ev(p.id, 'entry', 1, T0), ev(p.id, 'dinner', 3, T0 + 30 * MIN)]
-    const s = computeStats(rowsOf([p], evs), evs)
-    expect(s.waiting).toBe(0)
-    expect(s.served).toBe(3)
-    expect(s.review).toBe(0)
-  })
-  it('flags review for meals without entry, over-serving and possible duplicates', () => {
-    const noEntry = party()
-    const over = party()
+  it('flags review for possible duplicates only', () => {
     const dup = party({ possibleDuplicateOf: 'x' })
     const fine = party()
-    const evs = [ev(noEntry.id, 'dinner', 1, T0), ev(over.id, 'entry', 1, T0), ev(over.id, 'dinner', 2, T0 + MIN), ev(fine.id, 'entry', 1, T0)]
-    expect(computeStats(rowsOf([noEntry, over, dup, fine], evs), evs).review).toBe(3)
+    const twice = party()
+    const evs = [ev(fine.id, 'entry', 1, T0), ev(twice.id, 'entry', 1, T0), ev(twice.id, 'entry', 1, T0 + MIN, { counter: 'GATE-2' })]
+    expect(computeStats(rowsOf([dup, fine, twice], evs)).review).toBe(1)
   })
-  it('counts a meal without entry as served but not as waiting', () => {
-    const p = party()
-    const evs = [ev(p.id, 'dinner', 1, T0)]
-    const s = computeStats(rowsOf([p], evs), evs)
-    expect(s.served).toBe(1)
-    expect(s.waiting).toBe(0)
-    expect(s.arrived).toBe(0)
-  })
-})
-
-describe('computeStats: dinner overrides', () => {
-  const p = party({ children: 1 })
-  const q = party()
-  it('counts dinner passes that carry an override reason', () => {
-    const evs = [ev(p.id, 'dinner', 1, T0, { overrideReason: 'Guest of chief guest' }), ev(p.id, 'dinner', 1, T0 + MIN)]
-    expect(computeStats(rowsOf([p], evs), evs).overrides).toBe(1)
-  })
-  it('does not count entry overrides', () => {
-    const evs = [ev(p.id, 'entry', 1, T0, { overrideReason: 'x' })]
-    expect(computeStats(rowsOf([p], evs), evs).overrides).toBe(0)
-  })
-  it('only counts parties in the current rows, so a filter narrows it', () => {
-    const evs = [ev(p.id, 'dinner', 1, T0, { overrideReason: 'a' }), ev(q.id, 'dinner', 1, T0, { overrideReason: 'b' })]
-    expect(computeStats(rowsOf([p, q], evs), evs).overrides).toBe(2)
-    expect(computeStats(rowsOf([p], evs), evs).overrides).toBe(1)
-  })
-  it('does not count an override that was undone', () => {
-    const o = ev(p.id, 'dinner', 1, T0, { overrideReason: 'a' })
-    const evs = [o, voidOf(o, T0 + MIN)]
-    expect(computeStats(rowsOf([p], evs), evs).overrides).toBe(0)
+  it('ignores dinner scans the shared database may still hold', () => {
+    const p = party({ children: 1 })
+    const noEntry = party()
+    const evs = [ev(p.id, 'entry', 2, T0), legacyDinner(p.id, 2, T0 + 30 * MIN), legacyDinner(noEntry.id, 1, T0)]
+    const s = computeStats(rowsOf([p, noEntry], evs))
+    expect(s.arrived).toBe(2)
+    expect(s.review).toBe(0)
   })
 })
 
@@ -299,7 +234,6 @@ describe('computeStats: invariants over random events', () => {
           school: pick(schools),
           spouse: pick(['no', 'yes', 'maybe'] as const),
           children: Math.floor(r() * 4),
-          entitledOverride: r() < 0.1 ? Math.floor(r() * 4) : null,
           source: r() < 0.2 ? 'onspot' : 'booked',
           parking: pick(['none', 'two_wheeler', 'four_wheeler'] as const),
         }),
@@ -311,10 +245,10 @@ describe('computeStats: invariants over random events', () => {
           out.push(e)
           if (r() < 0.15) out.push(voidOf(e, e.clientAt + MIN))
         }
-        if (r() < 0.4) out.push(ev(p.id, 'dinner', 1 + Math.floor(r() * 3), T0 + Math.floor(r() * 180) * MIN))
+        if (r() < 0.4) out.push(legacyDinner(p.id, 1 + Math.floor(r() * 3), T0 + Math.floor(r() * 180) * MIN))
         return out
       })
-      const s = computeStats(rowsOf(parties, events), events)
+      const s = computeStats(rowsOf(parties, events))
       const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
       expect(sum(s.years.map((y) => y.exp))).toBe(s.expected)
       expect(sum(s.years.map((y) => y.arr))).toBe(s.arrived)
@@ -328,13 +262,12 @@ describe('computeStats: invariants over random events', () => {
       expect(sum(s.split.arr)).toBe(s.arrived)
       expect(s.notArrived).toBe(Math.max(0, s.expected - s.arrived))
       expect(s.walkIns.people).toBeLessThanOrEqual(s.arrived)
-      expect(s.waiting).toBeGreaterThanOrEqual(0)
       expect(s.parking.four.arr).toBeLessThanOrEqual(s.parking.four.exp)
       expect(s.parking.two.arr).toBeLessThanOrEqual(s.parking.two.exp)
       for (const v of [...s.split.exp, ...s.split.arr]) expect(v).toBeGreaterThanOrEqual(0)
       // A filter must be a plain subset: the filtered totals equal the totals over just those parties.
       const f = { years: [2010, 2015], schools: [] }
-      const sub = computeStats(rowsOf(parties.filter((p) => matches(p, f)), events), events)
+      const sub = computeStats(rowsOf(parties.filter((p) => matches(p, f)), events))
       expect(sub.expected).toBe(sum(s.years.filter((y) => f.years.includes(y.year)).map((y) => y.exp)))
       expect(sub.arrived).toBe(sum(s.years.filter((y) => f.years.includes(y.year)).map((y) => y.arr)))
     })
@@ -455,96 +388,6 @@ describe('arrivalSeries', () => {
   })
 })
 
-describe('dinnerSeries', () => {
-  const p = party({ children: 5 })
-  const entry = ev(p.id, 'entry', 4, T0 + 5 * MIN)
-  it('is null before the first meal', () => {
-    expect(dinnerSeries(rowsOf([p], [entry]), liveEvents([entry]), T0 + 10 * MIN)).toBeNull()
-  })
-  it('counts meals per 30 minutes and the queue at the end of each slot', () => {
-    const evs = [entry, ev(p.id, 'dinner', 1, T0 + 35 * MIN), ev(p.id, 'dinner', 2, T0 + 65 * MIN)]
-    const s = dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 70 * MIN)!
-    expect(s.bars.map((b) => [b.start - T0, b.meals, b.queue])).toEqual([[30 * MIN, 1, 3], [60 * MIN, 2, 1]])
-    expect(s.max).toBe(3)
-  })
-  it('caps the last slot at now, so a meal later in the slot is not yet served', () => {
-    const evs = [entry, ev(p.id, 'dinner', 1, T0 + 35 * MIN), ev(p.id, 'dinner', 2, T0 + 80 * MIN)]
-    const s = dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 70 * MIN)
-    // the later meal is in the future from now's view and its slot is not shown
-    expect(s!.bars.at(-1)!.start).toBe(T0 + 60 * MIN)
-  })
-  it('ignores meals from parties outside the rows', () => {
-    const other = party()
-    const evs = [entry, ev(p.id, 'dinner', 1, T0 + 35 * MIN), ev(other.id, 'dinner', 1, T0 + 36 * MIN)]
-    const s = dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 40 * MIN)!
-    expect(s.bars).toHaveLength(1)
-    expect(s.bars[0]!.meals).toBe(1)
-  })
-  it('has a queue of zero rather than negative when meals outnumber entries', () => {
-    const evs = [ev(p.id, 'dinner', 3, T0 + 35 * MIN)]
-    const s = dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 40 * MIN)!
-    expect(s.bars[0]!.queue).toBe(0)
-  })
-  it('always has a scale of at least 1', () => {
-    const evs = [ev(p.id, 'dinner', 0, T0 + 35 * MIN)]
-    expect(dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 40 * MIN)!.max).toBeGreaterThanOrEqual(1)
-  })
-  it('shows at most the last 8 slots', () => {
-    const evs = [entry, ev(p.id, 'dinner', 1, T0), ev(p.id, 'dinner', 1, T0 + 10 * 60 * MIN)]
-    const s = dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 10 * 60 * MIN + MIN)!
-    expect(s.bars).toHaveLength(8)
-  })
-  it('does not count voided meals when given live events', () => {
-    const d = ev(p.id, 'dinner', 2, T0 + 35 * MIN)
-    const evs = [entry, d, voidOf(d, T0 + 36 * MIN)]
-    expect(dinnerSeries(rowsOf([p], evs), liveEvents(evs), T0 + 40 * MIN)).toBeNull()
-  })
-})
-
-describe('counterRows', () => {
-  const counters = COUNTERS.filter((c) => c.kind === 'dinner').slice(0, 3)
-  const now = T0 + 60 * MIN
-  const p = party({ children: 5 })
-  it('lists every counter, with zeros for ones nobody used', () => {
-    const rows = counterRows(counters, [], 'dinner', now)
-    expect(rows.map((r) => [r.code, r.n, r.lastAt, r.rate, r.active])).toEqual(counters.map((c) => [c.code, 0, null, 0, false]))
-  })
-  it('sums servings, not scans', () => {
-    const evs = [ev(p.id, 'dinner', 2, now - 20 * MIN), ev(p.id, 'dinner', 3, now - 5 * MIN)]
-    expect(counterRows(counters, evs, 'dinner', now)[0]!.n).toBe(5)
-  })
-  it('reports people per minute over the last 10 minutes', () => {
-    const evs = [ev(p.id, 'dinner', 2, now - 20 * MIN), ev(p.id, 'dinner', 3, now - 5 * MIN), ev(p.id, 'dinner', 2, now - 1 * MIN)]
-    expect(counterRows(counters, evs, 'dinner', now)[0]!.rate).toBeCloseTo(0.5)
-  })
-  it('is active until 10 minutes pass since the last scan, and quiet after', () => {
-    const at = (m: number) => counterRows(counters, [ev(p.id, 'dinner', 1, now - m * MIN)], 'dinner', now)[0]!.active
-    expect(at(9)).toBe(true)
-    expect(at(10)).toBe(false)
-    expect(at(30)).toBe(false)
-  })
-  it('remembers who scanned last and when', () => {
-    const evs = [ev(p.id, 'dinner', 1, now - 30 * MIN, { actorName: 'Asha' }), ev(p.id, 'dinner', 1, now - 3 * MIN, { actorName: 'Ravi' }), ev(p.id, 'dinner', 1, now - 15 * MIN, { actorName: 'Meena' })]
-    const r = counterRows(counters, evs, 'dinner', now)[0]!
-    expect(r.actor).toBe('Ravi')
-    expect(r.lastAt).toBe(now - 3 * MIN)
-  })
-  it('keeps counters apart', () => {
-    const evs = [ev(p.id, 'dinner', 1, now - MIN, { counter: counters[1]!.code })]
-    const rows = counterRows(counters, evs, 'dinner', now)
-    expect(rows.map((r) => r.n)).toEqual([0, 1, 0])
-  })
-  it('ignores the other checkpoint', () => {
-    const evs = [ev(p.id, 'entry', 4, now - MIN, { counter: counters[0]!.code })]
-    expect(counterRows(counters, evs, 'dinner', now)[0]!.n).toBe(0)
-    expect(counterRows(counters, evs, 'entry', now)[0]!.n).toBe(4)
-  })
-  it('ignores events from counters that are not in the list', () => {
-    const evs = [ev(p.id, 'dinner', 1, now - MIN, { counter: 'DINNER-99' })]
-    expect(counterRows(counters, evs, 'dinner', now).every((r) => r.n === 0)).toBe(true)
-  })
-})
-
 describe('gateRows', () => {
   const gates = COUNTERS.filter((c) => c.kind === 'gate')
   it('adds up people per gate and lists quiet gates as zero', () => {
@@ -559,7 +402,7 @@ describe('gateRows', () => {
     const rows = rowsOf([a], evs)
     const g = gateRows(gates, rows)
     expect(g.map((x) => x.n)).toEqual([3, 0])
-    expect(g.reduce((n, x) => n + x.n, 0)).toBe(computeStats(rows, evs).arrived)
+    expect(g.reduce((n, x) => n + x.n, 0)).toBe(computeStats(rows).arrived)
   })
   it('drops a gate scan that was undone', () => {
     const a = party()

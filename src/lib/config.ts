@@ -14,16 +14,15 @@ export const MAX_CHILDREN = 6
 export interface Counter {
   code: string
   label: string
-  kind: 'gate' | 'dinner'
+  kind: 'gate'
   /** Retired counters can't be picked but keep their name on old scans. */
   active: boolean
 }
 
-/** Used until the phone has the server's list (see lib/counters.ts). Matches the rows in the counters table. */
+/** Used until the phone has the server's list (see lib/counters.ts). Matches the gate rows in the counters table. */
 export const BUILTIN_COUNTERS: Counter[] = [
   { code: 'GATE-1', label: 'Gate desk 1', kind: 'gate', active: true },
   { code: 'GATE-2', label: 'Gate desk 2', kind: 'gate', active: true },
-  ...Array.from({ length: 10 }, (_, i): Counter => ({ code: 'DINNER-' + (i + 1), label: 'Counter ' + (i + 1), kind: 'dinner', active: true })),
 ]
 
 export const SCHOOLS = [

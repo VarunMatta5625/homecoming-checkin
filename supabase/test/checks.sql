@@ -70,7 +70,7 @@ begin
 
   -- push_batch: accepted, then replay creates no duplicates
   perform _as('volunteer1@homecoming.test');
-  it := jsonb_build_array(_ev(pa, 'entry', 2, null, d1), _ev(pa, 'dinner', 1, null, d1));
+  it := jsonb_build_array(_ev(pa, 'entry', 2, null, d1), _ev(pa, 'entry', 1, null, d1));
   r := push_batch(it);
   perform _ok(r->0->>'status' = 'accepted' and r->1->>'status' = 'accepted', 'push_batch accepts new items');
   r := push_batch(it);
@@ -78,41 +78,41 @@ begin
   perform _back();
   perform _ok((select count(*) from scan_events where party_id = pa) = 2, 'replay created no duplicate events');
 
-  -- Two devices serve the same party; servings add; over entitlement flags review
-  select entitled into ent from party_state where party_id = pb;
-  perform _as('volunteer1@homecoming.test'); perform push_batch(jsonb_build_array(_ev(pb, 'entry', 1, null, d1), _ev(pb, 'dinner', ent, null, d1))); perform _back();
-  perform _as('volunteer2@homecoming.test'); perform push_batch(jsonb_build_array(_ev(pb, 'dinner', 1, null, d2))); perform _back();
-  perform _ok((select served from party_state where party_id = pb) = ent + 1, 'servings from two devices add up');
-  perform _ok((select over_served from party_state where party_id = pb), 'over-serving is flagged for review');
+  -- Two devices check in the same party: the earliest counts and the repeat is flagged
+  perform _as('volunteer1@homecoming.test'); perform push_batch(jsonb_build_array(_ev(pb, 'entry', 1, null, d1))); perform _back();
+  perform _as('volunteer2@homecoming.test'); perform push_batch(jsonb_build_array(_ev(pb, 'entry', 1, null, d2))); perform _back();
+  perform _ok((select duplicate_entry from party_state where party_id = pb), 'a second check-in of the same party is flagged as a repeat');
+  perform _ok((select entered from party_state where party_id = pb), 'the party counts as checked in');
 
-  -- Dinner without entry
-  perform _as('volunteer1@homecoming.test'); perform push_batch(jsonb_build_array(_ev(pc, 'dinner', 1, null, d1))); perform _back();
-  perform _ok((select served_without_entry from party_state where party_id = pc), 'served without entry is flagged');
+  -- Only check-ins are recorded
+  perform _as('volunteer1@homecoming.test'); r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 1, null, d1))); perform _back();
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Only check-ins%', 'a dinner scan is refused: only check-ins are recorded');
+  perform _ok((select not entered from party_state where party_id = pc), 'a refused dinner scan checks nobody in');
 
   -- Undo rules
   perform _as('volunteer1@homecoming.test');
-  ev := _ev(pc, 'dinner', 1, null, d1);
+  ev := _ev(pc, 'entry', 1, null, d1);
   perform push_batch(jsonb_build_array(ev));
   evid := ev->'payload'->>'id';
   perform _back();
   perform _as('volunteer2@homecoming.test');
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d2, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'Wrong guest'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d2, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'Wrong guest'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%own scans%', 'volunteer cannot undo someone else''s scan');
   perform _back();
   perform _as('volunteer1@homecoming.test');
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'Tapped by mistake'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'Tapped by mistake'))));
   perform _ok(r->0->>'status' = 'accepted', 'volunteer can undo their own scan in time');
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'again'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', evid, 'reason', 'again'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Already undone%', 'cannot undo the same scan twice');
-  ev := _ev(pc, 'dinner', 1, null, d1, 300);
+  ev := _ev(pc, 'entry', 1, null, d1, 300);
   perform push_batch(jsonb_build_array(ev));
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'late'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'late'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%window%', 'volunteer cannot undo after 120 seconds');
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'x', 'method', 'staff'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'x', 'method', 'staff'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Staff only%', 'volunteer cannot send a staff-method event');
   perform _back();
   perform _as('staff@homecoming.test');
-  r := push_batch(jsonb_build_array(_ev(pc, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'Guest left', 'method', 'staff'))));
+  r := push_batch(jsonb_build_array(_ev(pc, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'Guest left', 'method', 'staff'))));
   perform _ok(r->0->>'status' = 'accepted', 'staff can undo any scan, any time');
   perform _ok(_try('select mobile from party_contacts') like 'permission denied%', 'staff cannot read party_contacts directly (only through the audited function)');
   perform _ok(_try('select notes from parties') like 'permission denied%', 'staff cannot read parties.notes directly');
@@ -120,13 +120,13 @@ begin
 
   -- A void must target a plain scan of the same guest
   perform _as('volunteer1@homecoming.test');
-  ev := _ev(pa, 'dinner', 1, null, d1);
+  ev := _ev(pa, 'entry', 1, null, d1);
   perform push_batch(jsonb_build_array(ev));
-  r := push_batch(jsonb_build_array(_ev(pb, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'wrong guest'))));
+  r := push_batch(jsonb_build_array(_ev(pb, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'wrong guest'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%another guest%', 'a void cannot point at another guest''s scan');
-  ev3 := _ev(pa, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'oops'));
+  ev3 := _ev(pa, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev->'payload'->>'id', 'reason', 'oops'));
   perform push_batch(jsonb_build_array(ev3));
-  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev3->'payload'->>'id', 'reason', 'undo the undo'))));
+  r := push_batch(jsonb_build_array(_ev(pa, 'entry', 0, null, d1, 0, jsonb_build_object('action','void','voidsEventId', ev3->'payload'->>'id', 'reason', 'undo the undo'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Nothing to undo%', 'a void cannot point at another void');
   perform _back();
 
@@ -271,7 +271,7 @@ begin
   perform _ok((select count(*) from parties where deleted_at is null) = 2, 'only the new guests are current after a replace');
   perform _ok((select min(change_seq) from parties where id = any(old_ids)) > ch0, 'retired guests get new change numbers, so phones learn about them');
   perform _ok((r->>'flagged')::int = 0, 'a retired guest''s mobile is not flagged as a duplicate');
-  perform _ok((select entitled from party_state ps join parties p on p.id = ps.party_id where p.lead_name = 'Fresh One') = 6, 'dinner override sets the entitlement');
+  perform _ok((select entitled from party_state ps join parties p on p.id = ps.party_id where p.lead_name = 'Fresh One') = 4, 'a dinner override in an import file is ignored: the entitlement is the party size');
   perform _ok((select parking::text || spouse::text || children::text from parties where lead_name = 'Fresh One') = 'two_wheelermaybe2', 'imported spouse, children and parking are kept');
 
   -- Export: every current guest, contacts included, and the export itself is audited
@@ -294,37 +294,37 @@ begin
 
   -- Same phone, undo within the window while offline: accepted even though the scan was received long ago.
   perform _as('volunteer1@homecoming.test');
-  ev := _ev(pa, 'dinner', 1, null, d1, 300);
+  ev := _ev(pa, 'entry', 1, null, d1, 300);
   perform push_batch(jsonb_build_array(ev));
   perform _back();
   set local session_replication_role = replica;      -- the log is append-only; the test needs an old received_at
   update scan_events set received_at = now() - interval '10 minutes' where id = (ev->'payload'->>'id')::uuid;
   set local session_replication_role = origin;
   perform _as('volunteer1@homecoming.test');
-  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 240, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  r := push_batch(jsonb_build_array(_ev(pa, 'entry', 0, null, d1, 240, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
   perform _ok(r->0->>'status' = 'accepted', 'an offline undo from the same phone is accepted when it syncs late');
 
   -- An undo dated before the scan (backdated clock) is refused.
-  ev := _ev(pa, 'dinner', 1, null, d1, 10);
+  ev := _ev(pa, 'entry', 1, null, d1, 10);
   perform push_batch(jsonb_build_array(ev));
-  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 120, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  r := push_batch(jsonb_build_array(_ev(pa, 'entry', 0, null, d1, 120, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%before the scan%', 'an undo dated before its scan is rejected');
 
   -- Another phone, scan only just received: accepted. The server's clock decides.
-  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  r := push_batch(jsonb_build_array(_ev(pa, 'entry', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
   perform _ok(r->0->>'status' = 'accepted', 'an undo from another phone is accepted while the scan is fresh');
   perform _back();
 
   -- Another phone, scan received long ago: refused, whatever the undo's own timestamp says.
   perform _as('volunteer1@homecoming.test');
-  ev := _ev(pa, 'dinner', 1, null, d1, 0);
+  ev := _ev(pa, 'entry', 1, null, d1, 0);
   perform push_batch(jsonb_build_array(ev));
   perform _back();
   set local session_replication_role = replica;
   update scan_events set received_at = now() - interval '10 minutes' where id = (ev->'payload'->>'id')::uuid;
   set local session_replication_role = origin;
   perform _as('volunteer1@homecoming.test');
-  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
+  r := push_batch(jsonb_build_array(_ev(pa, 'entry', 0, null, d2, 0, vo || jsonb_build_object('voidsEventId', ev->'payload'->>'id'))));
   perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%window%', 'an undo from another phone is rejected once the scan is old, whatever its timestamp says');
   perform _back();
 
@@ -342,4 +342,27 @@ begin
   perform _back();
   perform _ok((select counter from device_status where device_id = dx and user_id = (select id from staff_users where email = 'volunteer1@homecoming.test')) = 'DINNER-2', 'a user''s own heartbeat still updates their row');
   raise notice 'MIGRATION 8 CHECKS PASSED';
+end $t$;
+
+-- Check-in only (migration 9)
+do $t$
+declare r jsonb; pa uuid; pz uuid; d1 uuid := gen_random_uuid(); ps text;
+begin
+  select id into pa from parties where deleted_at is null order by lead_name limit 1;
+  select id into pz from parties where deleted_at is null and not exists (select 1 from scan_events e where e.party_id = parties.id) limit 1;
+  select string_agg(column_name, ',' order by ordinal_position) into ps from information_schema.columns where table_name = 'party_state';
+  perform _ok(ps = 'party_id,entitled,entered,entered_at,headcount,duplicate_entry,possible_duplicate', 'party_state has no dinner columns');
+  perform _ok((select count(*) from counters where kind = 'dinner' and active) = 0 and (select count(*) from counters where kind = 'dinner') = 10, 'dinner counters are off but their rows stay');
+  perform _as('volunteer1@homecoming.test');
+  r := push_batch(jsonb_build_array(_ev(pa, 'dinner', 0, null, d1, 0, '{"action":"void","voidsEventId":"00000000-0000-0000-0000-000000000000","reason":"x"}')));
+  perform _back();
+  perform _ok(r->0->>'status' = 'rejected' and r->0->>'reason' like '%Only check-ins%', 'a dinner-type void is refused too');
+  -- A dinner scan already in the log (written before this migration) does not check anyone in
+  set local session_replication_role = replica;
+  insert into scan_events (id, party_id, checkpoint, action, qty, method, actor_id, counter, device_id, client_at)
+  values (gen_random_uuid(), pz, 'dinner', 'pass', 3, 'qr', (select id from staff_users where email = 'volunteer1@homecoming.test'), 'DINNER-1', d1, now());
+  set local session_replication_role = origin;
+  perform _ok((select count(*) from scan_events where checkpoint = 'dinner') >= 1, 'an old dinner scan is kept in the log');
+  perform _ok(pz is not null and not (select entered from party_state where party_id = pz), 'an old dinner scan does not count as a check-in');
+  raise notice 'MIGRATION 9 CHECKS PASSED';
 end $t$;

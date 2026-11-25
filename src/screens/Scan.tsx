@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { ActionToast } from '../components/ActionToast.tsx'
 import { Banners } from '../components/layout.tsx'
 import { ResultFlow, type Flow } from '../components/ResultFlow.tsx'
-import { Banner, Btn, Icon, Seg, Sheet, SyncPill } from '../components/ui.tsx'
+import { Banner, Btn, Icon, Sheet, SyncPill } from '../components/ui.tsx'
 import { DEMO } from '../lib/config.ts'
 import { counterLabel } from '../lib/counters.ts'
 import { db } from '../lib/db.ts'
@@ -89,7 +89,6 @@ export function ScanScreen() {
   }
 
   const camOff = !p.cameraAsked ? 'ask' : declined ? 'declined' : cam === 'blocked' ? 'blocked' : cam === 'none' ? 'none' : null
-  const hint = p.mode === 'dinner' ? 'Scan a pass to serve dinner' : 'Scan a pass to check in'
 
   return (
     <div className="scan">
@@ -98,23 +97,13 @@ export function ScanScreen() {
       <div className="scan-top">
         <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button type="button" className="pill cam" aria-label="Account and counter" onClick={() => ui.set({ account: true })}>
-            <Icon name={p.mode === 'dinner' ? 'utensils' : 'login'} size="s" />
+            <Icon name="login" size="s" />
             {counterLabel(p.counter ?? '')}
             <Icon name="chev-d" size="s" />
           </button>
           <SyncPill status={status} cam />
         </div>
-        <Seg
-          cam
-          label="Scanning for"
-          value={p.mode}
-          onChange={(m) => prefs.set({ mode: m })}
-          options={[
-            { value: 'entry', label: 'Entry', icon: 'login' },
-            { value: 'dinner', label: 'Dinner', icon: 'utensils' },
-          ]}
-        />
-        {import.meta.env.DEV && DEMO && <SimPanel mode={p.mode} onScan={(t) => void lookup(t)} />}
+        {import.meta.env.DEV && DEMO && <SimPanel onScan={(t) => void lookup(t)} />}
         <Banners className="scan-banner" />
         {!status.online && (
           <div className="scan-banner">
@@ -130,7 +119,7 @@ export function ScanScreen() {
           <div className="reticle" aria-hidden="true">
             <b /><b /><b /><b />
           </div>
-          <div className="camhint">{hint}</div>
+          <div className="camhint">Scan a pass to check in</div>
         </>
       )}
 
@@ -180,7 +169,7 @@ export function ScanScreen() {
       </div>
 
       <ActionToast hidden={!!flow || codeOpen} />
-      {flow && <ResultFlow flow={flow} mode={p.mode} onClose={() => setFlow(null)} onEnterCode={() => { setFlow(null); setCodeOpen(true) }} />}
+      {flow && <ResultFlow flow={flow} onClose={() => setFlow(null)} onEnterCode={() => { setFlow(null); setCodeOpen(true) }} />}
       {codeOpen && (
         <CodeSheet
           onClose={() => setCodeOpen(false)}
@@ -221,19 +210,16 @@ function CodeSheet({ onClose, onFound, onSearch }: { onClose: () => void; onFoun
 }
 
 /** Dev only: no camera on a laptop, so this reaches every result state the same way a scan would. */
-function SimPanel({ mode, onScan }: { mode: 'entry' | 'dinner'; onScan: (text: string) => void }) {
+function SimPanel({ onScan }: { onScan: (text: string) => void }) {
   const [list, setList] = useState<{ label: string; text: string }[]>([])
   const [open, setOpen] = useState(false)
   useEffect(() => {
     void (async () => {
-      const ids: [string, string][] =
-        mode === 'entry'
-          ? [['g2', 'Sameer · check in'], ['g10', 'Deepa · maybe'], ['g1', 'Priya · already in'], ['', 'Unknown QR']]
-          : [['g1', 'Priya · valid'], ['g2', 'Sameer · no entry'], ['g4', 'Kavya · served'], ['g3', 'Arjun · maybe'], ['g11', 'Meera · flagged'], ['', 'Unknown pass']]
+      const ids: [string, string][] = [['g2', 'Sameer · check in'], ['g10', 'Deepa · maybe'], ['g1', 'Priya · already in'], ['', 'Unknown QR']]
       const out = await Promise.all(ids.map(async ([id, label]) => ({ label, text: id ? qrPayload((await db.parties.get(id))?.qrToken ?? 'x') : label === 'Unknown QR' ? 'https://example.com/pay' : qrPayload('ZZZZZZZZZZZZZZZZZZZZZZ') })))
       setList(out)
     })()
-  }, [mode])
+  }, [])
   if (!list.length) return null
   return (
     <div className="sim">

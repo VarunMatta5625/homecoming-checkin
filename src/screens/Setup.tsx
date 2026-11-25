@@ -156,7 +156,6 @@ function ReadyStep() {
           <span className="val">{counter ? counterLabel(counter) : 'Choose'}</span>
           <Icon name="chev-r" size="s" className="chev" />
         </button>
-        <div className="cell"><span className="grow">Start in</span><span className="val">{counter?.startsWith('GATE') ? 'Entry' : counter ? 'Dinner' : '—'}</span></div>
       </div>
       <div style={{ flex: 1 }} />
       <p className="t-cap muted center" style={{ margin: 0 }}>Signed in as {p.session?.name} · {p.session && roleLabel(p.session.role)}</p>
