@@ -40,7 +40,7 @@ Running migration 6 only creates the function. In the dashboard open Authenticat
 ## Set up a hosted project
 
 1. Create a project at supabase.com. Pick the region closest to the venue (this project uses Sydney, `ap-southeast-2`). Save the database password somewhere safe.
-2. Open **SQL editor**. Run the migration files in filename order, each in its own run (or run `setup_all.sql` once on a new project).
+2. Open **SQL editor**. Run the migration files in filename order, each in its own run (or run `setup_all.sql` once on a new project). After adding a migration, run `scripts/build_setup_all.sh` to rebuild `setup_all.sql`; CI fails if you forget.
 3. Run `seed_dev.sql` for fake data and test accounts. (For a real event, run `seed_admin.sql` instead, and load the real guest list from the app: Account, Admin, Import guests. The app gives you a CSV template and a PDF guide. No script and no service-role key is needed.)
 4. Sign-in is Google only (Authentication, Sign In / Providers, Google; setup is in `CONTEXT.md`). Add your first admin with `seed_admin.sql` (edit the email first), or add people later from the app (Admin, Users). `seed_dev.sql` also adds fake `@homecoming.test` rows; they cannot sign in, and the cleanup SQL in `CONTEXT.md` removes them.
 5. **Project Settings, API**: copy the **Project URL** and the **anon public** key into `.env.local` at the project root. Never copy the `service_role` key into the app.

@@ -59,7 +59,7 @@ Three rules drive the whole design, and most of the code is a consequence of the
 ├── index.html                 PWA meta tags, mounts #root, loads src/main.tsx
 ├── vite.config.ts             __APP_VERSION__, production-key guard, PWA manifest + Workbox
 ├── vitest.config.ts           test config: node by default, jsdom per file by docblock, no PWA plugin
-├── vercel.json                SPA rewrite, no-cache for sw.js
+├── vercel.json                SPA rewrite, security headers, no-cache for sw.js
 ├── tsconfig*.json             bundler mode, erasableSyntaxOnly, verbatimModuleSyntax
 ├── .oxlintrc.json             react/rules-of-hooks error, only-export-components warn
 ├── src/
@@ -100,13 +100,14 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   ├── test/fixtures.ts       shared builders for the tests: party(), ev(), voidOf(), rowsOf(), rosterOf(), resetIds(), T0, MIN (`*.test.ts[x]` sit next to the code they test)
 │   └── styles/                tokens.css (generated), gh.css (components), app.css (layout), stats.css (Stats)
 ├── supabase/
-│   ├── migrations/            8 files, run in order
+│   ├── migrations/            11 files, run in order
 │   ├── setup_all.sql          all migrations + fake data for a new project
 │   ├── seed_admin.sql, seed_dev.sql
 │   └── test/                  harness.sh, stub_auth.sql, checks.sql
 ├── public/guest-list-guide.pdf  printable guide for the import template
 ├── scripts/test_passes.py     printable QR sheets (ReportLab)
 ├── scripts/make_guest_guide.py  generates the PDF guide
+├── scripts/build_setup_all.sh builds supabase/setup_all.sql from the migrations (CI checks it)
 └── .github/workflows/ci.yml   lint, typecheck, tests, build, database checks
 ```
 
@@ -766,7 +767,7 @@ The screen has a sticky header with three tiles (On campus now, percent arrived,
 - `navigateFallbackDenylist: [/\.pdf$/]` keeps the service worker from answering a request for `/guest-list-guide.pdf` with `index.html`.
 - `server: { host: true }` exposes the dev server on the LAN.
 
-[`vercel.json`](../vercel.json): a rewrite sending every path that is not `assets/`, `logos/`, `sw.js`, `workbox-*`, the manifest, or a file with an extension to `/index.html` (client-side routing), and `Cache-Control: no-cache` on `/sw.js` so phones check for a new worker.
+[`vercel.json`](../vercel.json): a rewrite sending every path that is not `assets/`, `logos/`, `sw.js`, `workbox-*`, the manifest, or a file with an extension to `/index.html` (client-side routing), and `Cache-Control: no-cache` on `/sw.js` so phones check for a new worker. Every response also carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` and `Permissions-Policy: camera=(self), microphone=(), geolocation=()`. There is deliberately no `Content-Security-Policy`: a wrong one would break Google sign-in or the Supabase calls.
 
 [`tsconfig.app.json`](../tsconfig.app.json): `target es2023`, `moduleResolution: bundler`, `allowImportingTsExtensions`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noUnusedLocals`, `noUnusedParameters`, `jsx: react-jsx`. `npm run build` is `tsc -b && vite build`, so type errors fail the build.
 
@@ -940,11 +941,13 @@ An admin-only way to put everyone back to "not arrived", for rehearsals. It only
 
 **Vitest** (`npm test`, config in [`vitest.config.ts`](../vitest.config.ts), separate from `vite.config.ts` so tests load neither the PWA plugin nor git): files match `src/**/*.test.{ts,tsx}`, run in `node` by default, and a test that needs the DOM opts in with a `// @vitest-environment jsdom` docblock. IndexedDB tests use `fake-indexeddb/auto`. Eleven files, 187 tests: `lib/stats.test.ts` (the stats maths), `lib/state.test.ts` (`partyState`), `lib/flush.test.ts` (the typed confirmation and grouping flush voids), `lib/authError.test.ts` (removed versus expired sign-in), `screens/Stats.test.tsx`, `screens/StatsCharts.test.tsx`, `screens/StatsFilter.test.tsx`, `lib/undo.test.ts` (`undoStatus`, `undoSecondsLeft`), `lib/counters.test.ts`, `lib/db.test.ts` (reads and writes, an in-place upgrade from `STORES_V1` that must keep every row including unsynced outbox items, and the `ui.dbUpdated` flag when another tab upgrades the database) and `components/ParkingChip.test.tsx`. [`src/test/fixtures.ts`](../src/test/fixtures.ts) holds the shared builders: `party()`, `ev()`, `voidOf()`, `resetIds()`, `T0`, `MIN`, `rowsOf()` and `rosterOf()`.
 
+**[`scripts/build_setup_all.sh`](../scripts/build_setup_all.sh)** concatenates the migrations and `seed_dev.sql` into `supabase/setup_all.sql`. `--check` fails when the committed file differs, so a new migration cannot be forgotten there.
+
 **[`scripts/make_guest_guide.py`](../scripts/make_guest_guide.py)** generates `public/guest-list-guide.pdf` (the printable column guide for organisers). Keep its column table in step with `FIELDS`.
 
 **[`scripts/test_passes.py`](../scripts/test_passes.py)**: ReportLab. `valid` reads a CSV (`pass_code, qr_token, lead_name, ...`), either a SQL-editor query result or the first twelve columns of the admin pass-list export (`passListCsv` in `guestImport.ts`), and draws four cards per A4 page, each with a QR of `'GH26:' + qr_token`. `invalid` draws QR codes that must be rejected (random `GH26:` tokens, a URL, a UPI payment string, plain text, a `GH25:` prefix). QR is drawn with `QrCodeWidget` scaled through a `Drawing` transform.
 
-**[CI](../.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `supabase/test/harness.sh`.
+**[CI](../.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `scripts/build_setup_all.sh --check`, then `supabase/test/harness.sh`.
 
 ## 18. Conventions and syntax
 
