@@ -172,10 +172,10 @@ describe('alerts', () => {
     mount()
     // failed syncs and one review: two alerts
     expect(screen.getByText('+1 more')).toBeTruthy()
-    expect(screen.queryByText(/need review/)).toBeNull()
+    expect(screen.queryByText(/needs? review/)).toBeNull()
     click(screen.getByText('+1 more'))
     expect(screen.getByText('2 syncs failed on this phone. Tap to retry')).toBeTruthy()
-    expect(screen.getByText('1 party need review')).toBeTruthy()
+    expect(screen.getByText('1 party needs review')).toBeTruthy()
     click(screen.getByText('Show fewer'))
     expect(screen.getByText('+1 more')).toBeTruthy()
   })
@@ -191,7 +191,7 @@ describe('alerts', () => {
     const { parties, events } = scenario()
     load(parties, events)
     mount()
-    click(screen.getByText('1 party need review'))
+    click(screen.getByText('1 party needs review'))
     expect(screen.getByText('REVIEW PAGE')).toBeTruthy()
   })
   it('shows no alert strip when all is well', () => {

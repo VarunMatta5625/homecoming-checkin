@@ -93,7 +93,7 @@ export function StatsScreen() {
   const gates = gateRows(counters.filter((c) => c.active || rows.some((r) => r.st.enteredCounter === c.code)), rows)
   const alerts: Alert[] = []
   if (status.failed) alerts.push({ icon: 'alert', text: plural(status.failed, 'sync') + ' failed on this phone. Tap to retry', go: () => void retryFailed() })
-  if (s.review) alerts.push({ icon: 'flag', text: plural(s.review, 'party', 'parties') + ' need review', go: () => navigate('/stats/review') })
+  if (s.review) alerts.push({ icon: 'flag', text: plural(s.review, 'party', 'parties') + (s.review === 1 ? ' needs review' : ' need review'), go: () => navigate('/stats/review') })
 
   const staleMin = lastSyncAt ? Math.floor((now - lastSyncAt) / 60000) : null
   const arrivedPct = pct(s.arrived, s.expected)
