@@ -70,19 +70,15 @@ When a phone is set up, it downloads the whole guest list once and keeps it. Eve
 
 <table>
 <tr>
-<td align="center" valign="top" width="25%">
+<td align="center" valign="top" width="33%">
 <img src="docs/screenshots/signin.png" width="200" alt="Sign in with Google"><br>
 <sub><b>Sign in with Google</b><br>One tap with the college account.</sub>
 </td>
-<td align="center" valign="top" width="25%">
-<img src="docs/screenshots/install.png" width="200" alt="Add to Home Screen"><br>
-<sub><b>Add to Home Screen</b><br>It opens full screen, like any other app.</sub>
-</td>
-<td align="center" valign="top" width="25%">
+<td align="center" valign="top" width="33%">
 <img src="docs/screenshots/downloading.png" width="200" alt="Getting this phone ready"><br>
 <sub><b>Getting this phone ready</b><br>About a minute on the venue Wi-Fi.</sub>
 </td>
-<td align="center" valign="top" width="25%">
+<td align="center" valign="top" width="33%">
 <img src="docs/screenshots/counter-picker.png" width="200" alt="Pick your station"><br>
 <sub><b>Pick your station</b><br>Your gate desk, remembered for next time.</sub>
 </td>

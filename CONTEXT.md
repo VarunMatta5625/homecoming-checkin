@@ -108,7 +108,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 ## Not verified yet
 
 - Real camera scans of real passes against live data (only the dev "simulate a scan" panel and an empty viewfinder were used).
-- Add to Home Screen and standalone mode on a real iPhone and Android, and Google sign-in inside an installed iPhone PWA (known to be awkward; test early).
+- Standalone mode (opened from the browser's own install or Add to Home Screen menu) on a real iPhone and Android, and Google sign-in inside an installed iPhone PWA (known to be awkward; test early).
 - Two phones offline for a long stretch, then reconnecting, on live data.
 - GITAM Workspace accounts: an admin policy may block third-party OAuth apps. The staff test address is a `student.gitam.edu` account; test with real GITAM accounts early.
 - Realtime subscription (not built; phones pull every 15 s).

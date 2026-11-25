@@ -253,7 +253,7 @@ Five stores use it (the Stats screen also keeps a private one, `view`, so going 
 
 | Store | Key | Holds |
 | --- | --- | --- |
-| `prefs` ([`prefs.ts`](../src/lib/prefs.ts)) | `gh26.prefs` | `deviceId`, `counter`, `theme`, `bigText`, `session`, `sessionExpired`, `rosterAt`, `lastSyncAt`, `homeScreenDone`, `cameraAsked`, `demoOffline`, `wipePending`, `partyCursor`, `eventCursor` |
+| `prefs` ([`prefs.ts`](../src/lib/prefs.ts)) | `gh26.prefs` | `deviceId`, `counter`, `theme`, `bigText`, `session`, `sessionExpired`, `rosterAt`, `lastSyncAt`, `cameraAsked`, `demoOffline`, `wipePending`, `partyCursor`, `eventCursor` |
 | `net` ([`sync.ts`](../src/lib/sync.ts)) | none (memory) | `online`, `syncing` |
 | `ui` ([`ui.ts`](../src/lib/ui.ts)) | none | `account` (sheet open), `last` (last action for the undo toast, with `until`, the time its undo window closes), `needRefresh`, `dbUpdated` (another tab upgraded the local database, so show "Reload this page"), `updateSW` |
 | remembered counter ([`counter.ts`](../src/lib/counter.ts)) | `gh26.counters` | `byAccount: { [actorId]: counterCode }` |
@@ -724,7 +724,7 @@ const lookup = useCallback(async (text: string) => {
 
 ### 14.2 Setup: [`Setup.tsx`](../src/screens/Setup.tsx)
 
-A small step machine: `'home' | 'download' | 'paused' | 'nolist' | 'ready'`. The initial step is `ready` if `rosterAt` exists, `home` if not installed (neither `display-mode: standalone` nor `navigator.standalone`) and not dismissed, else `download`. A `started` ref ensures the download effect fires once. On failure, `paused` if some rows had arrived, `nolist` if none. `beforeinstallprompt` is captured at module load into `deferredInstall` so the Install button can call `prompt()`. `ReadyStep` auto-applies a remembered counter (`savedCounter`, which returns it only while that counter is still active) in an effect and renders nothing in that case; otherwise it shows the picker and, when a counter is chosen, "Start scanning" calls `applyCounter`, which sets `counter` and flips `App` to `Shell`.
+A small step machine: `'download' | 'paused' | 'nolist' | 'ready'`. The initial step is `ready` if `rosterAt` exists, else `download`. A `started` ref ensures the download effect fires once. On failure, `paused` if some rows had arrived, `nolist` if none. `ReadyStep` auto-applies a remembered counter (`savedCounter`, which returns it only while that counter is still active) in an effect and renders nothing in that case; otherwise it shows the picker and, when a counter is chosen, "Start scanning" calls `applyCounter`, which sets `counter` and flips `App` to `Shell`.
 
 ### 14.3 Search: [`Search.tsx`](../src/screens/Search.tsx)
 

@@ -13,7 +13,6 @@ export interface Prefs {
   /** When the roster was last downloaded or refreshed. Null until the first download finishes. */
   rosterAt: number | null
   lastSyncAt: number | null
-  homeScreenDone: boolean
   cameraAsked: boolean
   /** Demo only: pretend there is no network. */
   demoOffline: boolean
@@ -33,7 +32,6 @@ const defaults: Prefs = {
   sessionExpired: false,
   rosterAt: null,
   lastSyncAt: null,
-  homeScreenDone: false,
   cameraAsked: false,
   demoOffline: false,
   wipePending: false,
