@@ -206,7 +206,7 @@ A few details that matter on the day:
 
 ## Run the list from your phone
 
-Admins do not need a laptop or a database console. Everything below is in the app. A **Flush all check-ins** button (Account, then Danger zone) clears every check-in for a fresh start after a rehearsal: registrations stay, on-spot guests can be kept or removed, and it asks for a reason and a typed confirmation first.
+Admins do not need a laptop or a database console. Everything below is in the app. Staff clear a duplicate flag with a reason, and open a guest’s mobile and email on demand (logged). Admins set the number of gate desks, see which phones are online with what waiting to sync, and read the full audit log from the start, which they can clear before the event so it only shows event activity (nothing is deleted, and it is refused once the event is live). A **Flush all check-ins** button (Account, then Danger zone) clears every check-in for a fresh start after a rehearsal: registrations stay, on-spot guests can be kept or removed, and it asks for a reason and a typed confirmation first.
 
 <table>
 <tr>
@@ -296,8 +296,8 @@ Light, dark or automatic, with a larger-text option for long shifts. The gate in
 
 ## In numbers
 
-- **187** automated tests cover the maths behind the stats, the undo rules, the counters and the phone’s local database.
-- **140** database checks run against a real Postgres, signed in as real roles, on every change.
+- **198** automated tests cover the maths behind the stats, the undo rules, the counters, the audit wording and the phone’s local database.
+- **185** database checks run against a real Postgres, signed in as real roles, on every change.
 - A **5,000-guest** list loads in about a third of a second in those database tests.
 - **No application servers** to look after: the app is static files plus a managed database.
 
