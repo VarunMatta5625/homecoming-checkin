@@ -1,11 +1,13 @@
+import { APP_VERSION, BUILTIN_COUNTERS } from '../lib/config.ts'
 import { db } from '../lib/db.ts'
 import { FLUSH_PREFIX } from '../lib/flush.ts'
 import { newId } from '../lib/ids.ts'
 import { prefs } from '../lib/prefs.ts'
 import { groupByParty, liveEvents, partyState } from '../lib/state.ts'
+import type { Counter } from '../lib/config.ts'
 import type { OutboxItem, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import { demoSnapshot } from './demo.ts'
-import type { AdminUser, Backend, FlushPreview, FlushResult, SignInResult } from './types.ts'
+import type { AdminUser, AuditEntry, AuditPage, Backend, DeviceRow, FlushPreview, FlushResult, SignInResult } from './types.ts'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -30,6 +32,15 @@ const readUsers = (): AdminUser[] => {
     return JSON.parse(localStorage.getItem(USERS_KEY) ?? '') as AdminUser[]
   } catch {
     return seedUsers
+  }
+}
+
+const AUDIT_KEY = 'gh26.demo.auditCleared'
+const readCleared = (): { at: number; reason: string } | null => {
+  try {
+    return JSON.parse(localStorage.getItem(AUDIT_KEY) ?? 'null') as { at: number; reason: string } | null
+  } catch {
+    return null
   }
 }
 
@@ -125,6 +136,50 @@ export const demoBackend: Backend = {
     await db.events.bulkAdd(voids)
     const removedOnSpot = opts.removeOnSpot ? await db.parties.filter((p) => p.source === 'onspot' && !p.deletedAt).modify({ deletedAt: new Date().toISOString() }) : 0
     return { voided: voids.length, removedOnSpot }
+  },
+  // Demo mode has no server: a resolve only changes this phone's copy (lib/actions.ts does that).
+  async resolveReview() {
+    await sleep(150)
+  },
+  async getContact(partyId) {
+    await sleep(200)
+    const p = await db.parties.get(partyId)
+    return p ? { mobile: '+91 98765' + p.mobileLast4.padStart(5, '0'), email: null } : null
+  },
+  async setGateCount(count) {
+    await sleep(250)
+    return Array.from({ length: Math.max(count, BUILTIN_COUNTERS.length) }, (_, i): Counter => ({ code: 'GATE-' + (i + 1), label: 'Gate desk ' + (i + 1), kind: 'gate', active: i < count }))
+  },
+  async listDevices() {
+    await sleep(150)
+    const now = Date.now()
+    const own = prefs.get()
+    return [
+      { deviceId: own.deviceId, name: own.session?.name ?? 'You', email: own.session?.email ?? '', counter: own.counter, pending: 0, appVersion: APP_VERSION, lastSyncAt: now - 4000, clockOffsetMs: 120 },
+      { deviceId: 'demo-2', name: 'Sneha P.', email: 'sneha.p@gitam.in', counter: 'GATE-2', pending: 3, appVersion: APP_VERSION, lastSyncAt: now - 35000, clockOffsetMs: -800 },
+      { deviceId: 'demo-3', name: 'Kiran B.', email: 'kiran.b@gitam.in', counter: 'GATE-1', pending: 0, appVersion: '0.9.0 (old)', lastSyncAt: now - 41 * 60000, clockOffsetMs: 5 * 60000 },
+    ] satisfies DeviceRow[]
+  },
+  // Demo mode has no audit table: the feed is this phone's own check-ins and undos.
+  async auditFeed(before): Promise<AuditPage> {
+    await sleep(150)
+    const cleared = readCleared()
+    const [events, parties] = await Promise.all([db.events.toArray(), db.parties.toArray()])
+    const names = new Map(parties.map((p) => [p.id, p.leadName]))
+    const entries: AuditEntry[] = events
+      .filter((e) => !(e.action === 'void' && e.reason?.startsWith(FLUSH_PREFIX)) && (!cleared || e.clientAt >= cleared.at))
+      .map((e) => ({
+        key: 's' + e.id, atUs: e.clientAt * 1000, actor: e.actorName, kind: e.action === 'pass' ? 'checkin' : e.method === 'staff' ? 'reset' : 'undo',
+        subject: names.get(e.partyId) ?? null, partyId: e.partyId, reason: e.reason ?? null, n: 1, extra: { qty: e.qty, counter: e.counter },
+      }) satisfies AuditEntry)
+    if (cleared) entries.push({ key: 'a-cleared', atUs: cleared.at * 1000, actor: prefs.get().session?.name ?? 'You', kind: 'audit_cleared', subject: null, partyId: null, reason: cleared.reason, n: 1, extra: {} })
+    entries.sort((a, b) => b.atUs - a.atUs || (a.key < b.key ? 1 : -1))
+    const rest = before ? entries.filter((e) => e.atUs < before.atUs || (e.atUs === before.atUs && e.key < before.key)) : entries
+    return { since: cleared?.at ?? null, entries: rest.slice(0, 100) }
+  },
+  async clearAuditLog(reason) {
+    await sleep(200)
+    localStorage.setItem(AUDIT_KEY, JSON.stringify({ at: Date.now(), reason }))
   },
   async exportPasses() {
     await sleep(300)

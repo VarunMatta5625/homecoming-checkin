@@ -2,9 +2,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_KEY, SUPABASE_URL, type Counter } from '../lib/config.ts'
 import { authFailure } from '../lib/authError.ts'
 import { prefs } from '../lib/prefs.ts'
-import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
+import type { OutboxItem, Party, PartyContact, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
-import type { AdminUser, Backend, Cursors, FlushPreview, FlushResult, ImportResult, SignInResult, Snapshot } from './types.ts'
+import type { AdminUser, AuditCursor, AuditPage, Backend, Cursors, DeviceRow, FlushPreview, FlushResult, ImportResult, SignInResult, Snapshot } from './types.ts'
 
 const PAGE = 1000
 
@@ -78,13 +78,15 @@ function fail(error: { message: string; code?: string; status?: number }): never
   throw new Error(error.message)
 }
 
-/** A flush function that isn't there means migration 10 hasn't been applied to this project yet. */
-function flushFail(error: { message: string; code?: string; status?: number }): never {
+/** A function that isn't there means that migration hasn't been applied to this project yet. */
+function migrationFail(error: { message: string; code?: string; status?: number }, migration: number, what: string): never {
   if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) {
-    throw new Error('The database needs its latest update (migration 10) before it can flush check-ins.')
+    throw new Error('The database needs its latest update (migration ' + migration + ') before it can ' + what + '.')
   }
   return fail(error)
 }
+
+const toCounter = (r: Row): Counter => ({ code: String(r.code), label: String(r.label), kind: r.kind as Counter['kind'], active: r.active !== false })
 
 async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Promise<Snapshot> {
   const parties: Party[] = []
@@ -168,7 +170,7 @@ export const supabaseBackend: Backend = {
   async listCounters() {
     const { data, error } = await sb().from('counters').select('code,label,kind,active')
     if (error) fail(error)
-    return (data as Row[]).map((r): Counter => ({ code: String(r.code), label: String(r.label), kind: r.kind as Counter['kind'], active: r.active !== false }))
+    return (data as Row[]).map(toCounter)
   },
 
   async ping() {
@@ -194,10 +196,7 @@ export const supabaseBackend: Backend = {
 
   async deleteUser(email) {
     const { error } = await sb().rpc('admin_delete_user', { p_email: email })
-    if (error) {
-      if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) throw new Error('The database needs its latest update (migration 11) before it can delete people.')
-      fail(error)
-    }
+    if (error) migrationFail(error, 11, 'delete people')
   },
 
   async importGuests(rows: GuestRow[], opts) {
@@ -214,13 +213,51 @@ export const supabaseBackend: Backend = {
 
   async flushPreview() {
     const { data, error } = await sb().rpc('admin_flush_preview')
-    if (error) flushFail(error)
+    if (error) migrationFail(error, 10, 'flush check-ins')
     return data as FlushPreview
   },
 
   async flushCheckins(opts) {
     const { data, error } = await sb().rpc('admin_flush_checkins', { p_reason: opts.reason, p_remove_onspot: opts.removeOnSpot })
-    if (error) flushFail(error)
+    if (error) migrationFail(error, 10, 'flush check-ins')
     return data as FlushResult
+  },
+
+  async resolveReview(partyId, note) {
+    const { error } = await sb().rpc('resolve_review', { p_party_id: partyId, p_note: note })
+    if (error) migrationFail(error, 12, 'clear duplicate flags')
+  },
+
+  async getContact(partyId) {
+    const { data, error } = await sb().rpc('get_party_contact', { p_party_id: partyId })
+    if (error) fail(error)
+    const c = data as { mobile: string | null; email: string | null } | null
+    return c?.mobile ? ({ mobile: c.mobile, email: c.email } satisfies PartyContact) : null
+  },
+
+  async setGateCount(count) {
+    const { data, error } = await sb().rpc('admin_set_gate_count', { p_count: count })
+    if (error) migrationFail(error, 12, 'change the number of gate desks')
+    return (data as Row[]).map(toCounter)
+  },
+
+  async listDevices() {
+    const { data, error } = await sb().rpc('admin_list_devices')
+    if (error) migrationFail(error, 12, 'list devices')
+    return (data as Row[]).map((r): DeviceRow => ({
+      deviceId: r.deviceId, name: r.name, email: r.email, counter: r.counter, pending: r.pending ?? 0, appVersion: r.appVersion,
+      lastSyncAt: Number(r.lastSyncAt), clockOffsetMs: r.clockOffsetMs,
+    }))
+  },
+
+  async auditFeed(before?: AuditCursor) {
+    const { data, error } = await sb().rpc('audit_feed', { p_limit: 100, p_before_us: before?.atUs ?? null, p_before_key: before?.key ?? null })
+    if (error) migrationFail(error, 13, 'show the audit log')
+    return data as AuditPage
+  },
+
+  async clearAuditLog(reason) {
+    const { error } = await sb().rpc('admin_clear_audit_log', { p_reason: reason })
+    if (error) migrationFail(error, 13, 'clear the audit log')
   },
 }

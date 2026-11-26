@@ -39,4 +39,5 @@ export const SCHOOLS = [
 export const schoolShort = (s: string | null) => (s ?? '').replace(/^School of /, '').replace(/^GITAM /, '').replace(/ College$/, '')
 
 export const REASONS_UNDO = ['Tapped by mistake', 'Wrong guest', 'Wrong number of people', 'Something else']
+export const REASONS_RESOLVE = ['Different people, same number', 'Family sharing one phone', 'Checked with the guest']
 export const REASONS_CORRECT = ['Duplicate while offline', 'Wrong guest', 'Scanned wrong pass', 'Guest left']

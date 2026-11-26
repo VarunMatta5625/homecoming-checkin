@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { backend } from '../backend/index.ts'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CorrectionSheet } from '../components/CorrectionSheet.tsx'
 import { Empty, Btn, Chip, Group, Icon, NavBar, ParkingChip } from '../components/ui.tsx'
@@ -8,6 +9,42 @@ import { usePartyView } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { hasRole, type ScanEvent } from '../lib/types.ts'
 import type { IconName } from '../components/sprite.ts'
+
+/** Staff only. The full number and email are fetched on tap, kept in this component only (never stored on the phone), and the server logs each lookup. */
+function ContactGroup({ partyId }: { partyId: string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'none' | { mobile: string; email: string | null }>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const show = async () => {
+    setState('loading')
+    setError(null)
+    try {
+      const c = await backend.getContact(partyId)
+      setState(c ?? 'none')
+    } catch (e) {
+      setState('idle')
+      setError(e instanceof Error ? e.message : 'Couldn’t load the contact. Check your signal and try again.')
+    }
+  }
+  return (
+    <>
+      <Group header="Contact" style={{ marginTop: 16 }} footer="Only staff see this. Opening it is saved in the audit log. It needs signal and is never kept on this phone.">
+        {typeof state === 'object' ? (
+          <>
+            <div className="cell"><Icon name="phone" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Mobile</span><a className="val" href={'tel:' + state.mobile.replace(/\s/g, '')}>{state.mobile}</a></div>
+            <div className="cell"><Icon name="mail" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Email</span>{state.email ? <a className="val" href={'mailto:' + state.email}>{state.email}</a> : <span className="val muted">None</span>}</div>
+          </>
+        ) : state === 'none' ? (
+          <div className="cell"><span className="t-sub muted">The server has no contact for this guest yet. A guest registered on a phone appears after that phone syncs.</span></div>
+        ) : (
+          <div className="px stack g2" style={{ padding: 16 }}>
+            <Btn kind="secondary" icon="phone" disabled={state === 'loading'} onClick={() => void show()}>{state === 'loading' ? 'Loading…' : 'Show mobile and email'}</Btn>
+          </div>
+        )}
+      </Group>
+      {error && <div className="err-msg"><Icon name="alert" size="s" />{error}</div>}
+    </>
+  )
+}
 
 function Timeline({ events, empty }: { events: ScanEvent[]; empty: string }) {
   if (!events.length) return <div className="tl"><div className="t-sub muted" style={{ padding: '12px 16px' }}>{empty}</div></div>
@@ -77,6 +114,8 @@ export function GuestDetailScreen() {
         </div>
       </Group>
       {entry.length > 1 && <div style={{ marginTop: 12 }}><Timeline events={entry} empty="" /></div>}
+
+      {staff && <ContactGroup key={party.id} partyId={party.id} />}
 
       {staff ? (
         <div className="px" style={{ paddingTop: 16 }}>

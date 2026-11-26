@@ -111,6 +111,8 @@ export function AccountSheet() {
             <button type="button" className="cell" onClick={() => go('/admin/users')}><Icon name="users" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Users and roles</span><Icon name="chev-r" size="s" className="chev" /></button>
             <button type="button" className="cell" onClick={() => go('/admin/import')}><Icon name="download" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Import guests</span><Icon name="chev-r" size="s" className="chev" /></button>
             <button type="button" className="cell" onClick={() => go('/admin/audit')}><Icon name="history" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Audit log</span><Icon name="chev-r" size="s" className="chev" /></button>
+            <button type="button" className="cell" onClick={() => go('/admin/devices')}><Icon name="phone" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Devices</span><Icon name="chev-r" size="s" className="chev" /></button>
+            <button type="button" className="cell" onClick={() => go('/admin/counters')}><Icon name="settings" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Gate desks</span><Icon name="chev-r" size="s" className="chev" /></button>
           </Group>
         )}
 

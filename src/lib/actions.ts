@@ -59,6 +59,14 @@ export async function resetEntry(partyId: string, reason: string) {
   await commit(live.map((o) => build({ partyId, checkpoint: o.checkpoint, action: 'void', qty: 0, voidsEventId: o.id, reason, method: 'staff' })))
 }
 
+/** Staff: these two guests are different people. Needs signal (the flag is cleared for everyone), then this phone's copy follows at once. */
+export async function resolveReview(partyId: string, note: string) {
+  if (!hasRole(prefs.get().session, 'staff')) throw new Error('Only staff can clear a review')
+  if (note.trim().length < 3) throw new Error('A reason is required')
+  await backend.resolveReview(partyId, note.trim())
+  await db.parties.update(partyId, { possibleDuplicateOf: null })
+}
+
 export interface RegisterInput {
   name: string
   mobile: string

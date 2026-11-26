@@ -7,7 +7,7 @@ import { prefs } from '../lib/prefs.ts'
 import { Btn, Group, Kv, ResultHead, Sheet } from './ui.tsx'
 
 /** Staff only. A reset is a void event with a required reason, written to the audit log by the server. */
-export function CorrectionSheet({ partyId, onClose, onOpenGuest }: { partyId: string; onClose: () => void; onOpenGuest?: () => void }) {
+export function CorrectionSheet({ partyId, onClose }: { partyId: string; onClose: () => void }) {
   const view = usePartyView(partyId)
   const session = prefs.use().session
   const [reason, setReason] = useState<string | null>(null)
@@ -43,7 +43,7 @@ export function CorrectionSheet({ partyId, onClose, onOpenGuest }: { partyId: st
     )
 
   return (
-    <Sheet title="Correct record" onClose={onClose} action={onOpenGuest && <button type="button" className="navbtn" onClick={onOpenGuest}>Guest</button>}>
+    <Sheet title="Correct record" onClose={onClose}>
       <div className="px5 stack" style={{ gap: 2 }}>
         <span className="t-title" style={{ fontWeight: 700 }}>{party.leadName}</span>
         <span className="t-sub muted">

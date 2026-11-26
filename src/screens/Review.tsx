@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CorrectionSheet } from '../components/CorrectionSheet.tsx'
+import { ReviewSheet } from '../components/ReviewSheet.tsx'
 import { Banner, Chip, Empty, Icon, NavBar } from '../components/ui.tsx'
 import { plural } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
@@ -20,7 +20,7 @@ export function ReviewScreen() {
         <Empty icon="check-circle" tone="ok" title="All clear" body="No parties need review. Flags show up here when two guests share a mobile number." />
       ) : (
         <>
-          <Banner kind="info" icon="info">These guests share a mobile number with another guest, so they may be listed twice. Check with the guest, then correct the record.</Banner>
+          <Banner kind="info" icon="info">These guests share a mobile number with another guest, so they may be listed twice. Check with the guest, then mark them as different people or correct the record.</Banner>
           <div style={{ height: 18 }} />
           <div className="gh-h">{plural(flagged.length, 'party', 'parties')}</div>
           <div className="group">
@@ -41,7 +41,7 @@ export function ReviewScreen() {
           <div className="gh-f">Corrections need a reason and are saved to the audit log.</div>
         </>
       )}
-      {open && <CorrectionSheet partyId={open} onClose={() => setOpen(null)} onOpenGuest={() => leaveLayers(() => navigate('/guest/' + open))} />}
+      {open && <ReviewSheet partyId={open} onClose={() => setOpen(null)} onOpenGuest={() => leaveLayers(() => navigate('/guest/' + open))} />}
     </main>
   )
 }

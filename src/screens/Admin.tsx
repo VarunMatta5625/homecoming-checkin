@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
 import type { AdminUser } from '../backend/types.ts'
-import { Alert, Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
-import { counterLabel } from '../lib/counters.ts'
-import { splitFlushVoids } from '../lib/flush.ts'
-import { fmtTime, initials, plural, roleLabel } from '../lib/format.ts'
-import { useRoster } from '../lib/hooks.ts'
+import { Alert, Btn, Chip, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
+import { initials, roleLabel } from '../lib/format.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { Role } from '../lib/types.ts'
 
@@ -139,47 +136,5 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
         />
       )}
     </Sheet>
-  )
-}
-
-/** Shows the corrections and undos this phone knows about. User and guest edits are in the server audit log. */
-export function AuditScreen() {
-  const roster = useRoster()
-  // A flush writes one void per guest. Show each flush as one line, not hundreds.
-  const rows = useMemo(() => {
-    if (!roster) return []
-    const { flushes, rest } = splitFlushVoids(roster.events.filter((e) => e.action === 'void'))
-    return [...flushes.map((f) => ({ at: f.at, flush: f, e: null })), ...rest.map((e) => ({ at: e.clientAt, flush: null, e }))].sort((a, b) => b.at - a.at)
-  }, [roster])
-  return (
-    <Page title="Audit log">
-      <Banner kind="info" icon="info">Showing undos and corrections synced to this phone. User and guest edits appear here once the server audit feed is connected.</Banner>
-      <div style={{ height: 16 }} />
-      {rows.length === 0 ? (
-        <Empty icon="history" title="Nothing logged yet" body="Undos and staff corrections will show up here with who did them and why." />
-      ) : (
-        <div className="group">
-          {rows.map(({ flush, e }) => flush ? (
-            <div key={flush.key} className="rrow vtop">
-              <div className="lead lead36" style={{ background: 'var(--bad-bg)', color: 'var(--bad-text)' }}><Icon name="alert" size="m" /></div>
-              <div className="grow stack" style={{ gap: 2 }}>
-                <span className="nm" style={{ whiteSpace: 'normal' }}>{'Flushed all check-ins · ' + plural(flush.count, 'check-in') + ' undone'}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>{fmtTime(flush.at)} · {flush.by}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>Reason: {flush.reason}</span>
-              </div>
-            </div>
-          ) : e && (
-            <div key={e.id} className="rrow vtop">
-              <div className="lead lead36" style={{ background: 'var(--warn-bg)', color: 'var(--warn-text)' }}><Icon name={e.method === 'staff' ? 'wrench' : 'undo'} size="m" /></div>
-              <div className="grow stack" style={{ gap: 2 }}>
-                <span className="nm" style={{ whiteSpace: 'normal' }}>{(e.method === 'staff' ? 'Reset check-in' : 'Undid check-in') + ' · ' + (roster?.byId.get(e.partyId)?.leadName ?? 'Unknown')}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>{fmtTime(e.clientAt)} · {e.actorName} · {counterLabel(e.counter)}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>Reason: {e.reason}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Page>
   )
 }
