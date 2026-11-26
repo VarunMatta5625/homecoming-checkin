@@ -156,7 +156,7 @@ begin
   perform _as('admin@homecoming.test');
   perform admin_set_user('new.volunteer@homecoming.test', 'New V', 'volunteer', true);
   perform _ok((select count(*) from jsonb_array_elements(admin_list_users())) = 6, 'admin adds a user and lists them');
-  perform _ok(jsonb_array_length(audit_feed(50)) > 0, 'admin reads the audit feed');
+  perform _ok(jsonb_array_length(audit_feed(50)->'entries') > 0, 'admin reads the audit feed');
   perform _ok(_try('select admin_set_user(''admin@homecoming.test'', ''Test Admin'', ''staff'', true)') like '%last active admin%', 'cannot demote the last admin');
   perform _ok(_try('select admin_set_user(''admin@homecoming.test'', ''Test Admin'', ''admin'', false)') like '%last active admin%', 'cannot deactivate the last admin');
   perform admin_set_user('second.admin@homecoming.test', 'Second', 'admin', true);
@@ -173,7 +173,7 @@ begin
   perform _ok((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('authenticated', p.oid, 'execute')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 18, 'signed-in users can execute exactly the 18 functions the app needs');
+      and p.proname not in ('_as', '_back', '_try', '_ok', '_ev')) = 21, 'signed-in users can execute exactly the 21 functions the app needs');
 
   -- Sign-up hook: only listed emails may create an account, and only Supabase Auth may run the hook
   execute 'set local role supabase_auth_admin';
@@ -491,4 +491,129 @@ begin
   perform _ok(whoami()->>'role' = 'volunteer', 'a person who was never switched off still gets in');
   perform _back();
   raise notice 'MIGRATION 11 CHECKS PASSED';
+end $t$;
+
+
+-- Migration 12: resolve a review, set the number of gate desks, list devices.
+do $t$
+declare r jsonb; pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); d1 uuid := gen_random_uuid(); seq0 bigint; seq1 bigint; n int;
+begin
+  update staff_users set role = 'admin', active = true where email = 'admin@homecoming.test';
+  update staff_users set active = true where email in ('staff@homecoming.test', 'volunteer1@homecoming.test');   -- earlier blocks switch some of them off
+  perform _as('volunteer1@homecoming.test');
+  perform push_batch(jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'type', 'party', 'payload', jsonb_build_object('party', jsonb_build_object('id', pa, 'passCode', 'GH26-RVW01', 'qrToken', 'tok-rvw01', 'leadName', 'Review One', 'batchYear', 2012, 'school', 'School of Science', 'spouse', 'no', 'children', 0, 'parking', 'none'), 'contact', jsonb_build_object('mobile', '90000 08888', 'email', null))), jsonb_build_object('id', gen_random_uuid(), 'type', 'party', 'payload', jsonb_build_object('party', jsonb_build_object('id', pb, 'passCode', 'GH26-RVW02', 'qrToken', 'tok-rvw02', 'leadName', 'Review Two', 'batchYear', 2012, 'school', 'School of Science', 'spouse', 'no', 'children', 0, 'parking', 'none'), 'contact', jsonb_build_object('mobile', '90000 08888', 'email', null)))));
+  perform device_heartbeat(d1, 'GATE-1', 3, '9.9.9', now());
+  perform _ok(_try('select resolve_review(''' || pb || ''', ''Different person'')') like '%not authorised%', 'a volunteer cannot resolve a review');
+  perform _ok(_try('select admin_set_gate_count(3)') like '%not authorised%', 'a volunteer cannot set the gate count');
+  perform _ok(_try('select admin_list_devices()') like '%not authorised%', 'a volunteer cannot list devices');
+  perform _back();
+  perform _ok((select possible_duplicate_of from parties where id = pb) = pa, 'the second party with the same mobile is flagged');
+
+  perform _as('staff@homecoming.test');
+  perform _ok(_try('select resolve_review(''' || pb || ''', '' x '')') like '%reason is required%', 'resolving a review needs a reason');
+  perform _ok(_try('select resolve_review(''' || pa || ''', ''Different person'')') like '%not flagged%', 'a guest that is not flagged cannot be resolved');
+  perform _ok(_try('select admin_set_gate_count(3)') like '%not authorised%', 'staff cannot set the gate count');
+  perform _ok(_try('select admin_list_devices()') like '%not authorised%', 'staff cannot list devices');
+  perform _ok((select possible_duplicate_of from parties where id = pb) is not null, 'a refused resolve leaves the flag');
+  seq0 := (select change_seq from parties where id = pb);
+  perform resolve_review(pb, 'Different person');
+  seq1 := (select change_seq from parties where id = pb);
+  perform _back();
+  perform _ok((select possible_duplicate_of from parties where id = pb) is null, 'resolving clears the flag');
+  perform _ok(seq1 > seq0, 'resolving gives the party a new change number, so phones pull it');
+  perform _ok((select count(*) from review_resolutions where party_id = pb and note = 'Different person') = 1, 'the resolution is recorded with its note');
+  perform _ok(exists (select 1 from audit_log where table_name = 'parties' and row_id = pb::text and action = 'update' and reason = 'Not a duplicate: Different person'), 'the resolution is in the audit log with its reason');
+  perform _as('staff@homecoming.test');
+  perform _ok(_try('select resolve_review(''' || pb || ''', ''Again'')') like '%not flagged%', 'a resolved guest cannot be resolved twice');
+  perform _back();
+
+  -- Gate desks
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_set_gate_count(0)') like '%1 to 20%' and _try('select admin_set_gate_count(21)') like '%1 to 20%', 'the gate count must be 1 to 20');
+  r := admin_set_gate_count(4);
+  perform _ok((select count(*) from counters where kind = 'gate' and active) = 4 and (select count(*) from counters where kind = 'gate') = 4, 'a higher gate count adds the missing desks');
+  perform _ok(jsonb_array_length(r) = 4 and r->0->>'label' = 'Gate desk 1', 'the new list is returned');
+  r := admin_set_gate_count(1);
+  perform _ok((select count(*) from counters where kind = 'gate' and active) = 1 and (select count(*) from counters where kind = 'gate') = 4, 'a lower gate count switches desks off and keeps their rows');
+  perform _ok((select count(*) from counters where kind = 'dinner') = 10, 'dinner counters are not touched');
+  perform admin_set_gate_count(2);
+  perform _ok((select count(*) from counters where kind = 'gate' and active) = 2 and (select active from counters where code = 'GATE-2'), 'switching a desk back on works');
+  perform _ok(exists (select 1 from audit_log where table_name = 'counters' and action = 'set' and (after->>'gates')::int = 2 and (before->>'gates')::int = 1), 'a gate count change is in the audit log');
+
+  -- Devices
+  r := admin_list_devices();
+  n := (select count(*) from jsonb_array_elements(r) x where x->>'deviceId' = d1::text and x->>'counter' = 'GATE-1' and (x->>'pending')::int = 3 and x->>'appVersion' = '9.9.9' and x->>'email' = 'volunteer1@homecoming.test');
+  perform _ok(n = 1, 'the device list shows the phone, its person, counter, unsent count and version');
+  perform _back();
+  raise notice 'MIGRATION 12 CHECKS PASSED';
+end $t$;
+
+
+-- Migration 13: the audit feed, and clearing it.
+do $t$
+declare r jsonb; e jsonb; pg1 jsonb; pg2 jsonb; k1 text; n_before bigint; log_before bigint; since_ms bigint; pa uuid; d1 uuid := gen_random_uuid();
+begin
+  update staff_users set role = 'admin', active = true where email = 'admin@homecoming.test';
+  update staff_users set active = true where email in ('staff@homecoming.test', 'volunteer1@homecoming.test');   -- earlier blocks switch some of them off
+  select id into pa from parties where source = 'booked' and deleted_at is null order by pass_code limit 1 offset 0;
+  perform _as('volunteer1@homecoming.test'); perform _ok(_try('select audit_feed()') like '%not authorised%' and _try('select admin_clear_audit_log(''rehearsal over'')') like '%not authorised%', 'a volunteer cannot read or clear the audit log'); perform _back();
+  perform _as('staff@homecoming.test'); perform _ok(_try('select audit_feed()') like '%not authorised%' and _try('select admin_clear_audit_log(''rehearsal over'')') like '%not authorised%', 'staff cannot read or clear the audit log'); perform _back();
+
+  perform _as('admin@homecoming.test');
+  r := audit_feed(200);
+  perform _ok(jsonb_typeof(r->'entries') = 'array' and (r->'since') = 'null'::jsonb, 'the feed is an object with a since time and a list of entries');
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' = 'checkin' and x->>'subject' is not null and x->>'actor' is not null), 'check-ins are in the feed with the guest and who did it');
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' in ('undo', 'reset')), 'undos and resets are in the feed');
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' = 'contact_read'), 'opening a contact is in the feed');
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' = 'user_added'), 'adding a person is in the feed');
+  perform _ok(r::text !~ '\+91' and r::text !~ '"before"' and r::text !~ '"after"' and r::text !~ 'tok-', 'the feed carries no mobile numbers, QR tokens or raw rows');
+  perform _ok(not exists (select 1 from jsonb_array_elements(audit_feed(200)->'entries') x where x->>'reason' like 'Flush: %' and x->>'kind' in ('undo', 'reset')), 'the voids a flush writes are not listed one by one');
+  perform _ok((select max((x->>'n')::int) from jsonb_array_elements(audit_feed(200)->'entries') x where x->>'kind' = 'guests_imported') >= 5000, 'a 5000-guest import is one line with a count');
+  perform _ok(not exists (select 1 from jsonb_array_elements(audit_feed(200)->'entries') x where x->>'kind' = 'other' and x->>'reason' like 'Guest list import%'), 'import rows are classified');
+
+  -- Paging: pages do not overlap and keep newest-first order
+  pg1 := audit_feed(5)->'entries';
+  e := pg1->4;
+  pg2 := audit_feed(5, (e->>'atUs')::bigint, e->>'key')->'entries';
+  perform _ok(jsonb_array_length(pg1) = 5 and jsonb_array_length(pg2) = 5, 'the feed returns the page size asked for');
+  perform _ok(not exists (select 1 from jsonb_array_elements(pg1) a join jsonb_array_elements(pg2) b on a->>'key' = b->>'key'), 'the next page does not repeat the last one');
+  perform _ok((pg2->0->>'atUs')::bigint < (pg1->4->>'atUs')::bigint or ((pg2->0->>'atUs')::bigint = (pg1->4->>'atUs')::bigint and pg2->0->>'key' < pg1->4->>'key'), 'the next page continues where the last stopped');
+  perform _ok(jsonb_array_length(audit_feed(10000)->'entries') <= 200, 'the page size is capped at 200');
+
+  perform _ok(_try('select admin_clear_audit_log('' ab '')') like '%reason is required%', 'clearing needs a reason');
+  perform _back();
+  update event_settings set is_live = true;
+  perform _as('admin@homecoming.test');
+  perform _ok(_try('select admin_clear_audit_log(''rehearsal over'')') like '%event is live%', 'clearing is refused once the event is live');
+  perform _back();
+  update event_settings set is_live = false;
+end $t$;
+
+-- A new transaction, so the clear's timestamp is later than everything above (a DO block has one now()).
+do $t$
+declare r jsonb; since_ms bigint; log_before bigint; pa uuid; d1 uuid := gen_random_uuid();
+begin
+  select id into pa from parties where source = 'booked' and deleted_at is null order by pass_code limit 1 offset 0;
+  select count(*) into log_before from audit_log;
+  perform _as('admin@homecoming.test');
+  since_ms := (admin_clear_audit_log('rehearsal over')->>'since')::bigint;
+  r := audit_feed(200);
+  perform _ok((r->>'since')::bigint = since_ms, 'the feed reports when it was cleared');
+  perform _ok(jsonb_array_length(r->'entries') = 1 and r->'entries'->0->>'kind' = 'audit_cleared' and r->'entries'->0->>'reason' = 'rehearsal over', 'after a clear the feed starts with the clear itself and nothing older');
+  perform _back();
+  perform _ok((select count(*) from audit_log) > log_before, 'clearing deletes nothing');
+  perform _ok((select count(*) from scan_events) > 0, 'the scans stay');
+
+  -- New activity shows up after a clear
+  perform _as('volunteer1@homecoming.test');
+  perform push_batch(jsonb_build_array(_ev(pa, 'entry', 1, null, d1)));
+  perform _back();
+  perform _as('admin@homecoming.test');
+  r := audit_feed(200);
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' = 'checkin') and jsonb_array_length(r->'entries') = 2, 'a check-in after the clear is listed');
+  perform admin_flush_checkins('rehearsal over', false);
+  r := audit_feed(200);
+  perform _ok(exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' = 'flush' and (x->'extra'->>'voided')::int >= 1) and not exists (select 1 from jsonb_array_elements(r->'entries') x where x->>'kind' in ('undo', 'reset')), 'a flush is one line, not one line per guest');
+  perform _back();
+  raise notice 'MIGRATION 13 CHECKS PASSED';
 end $t$;

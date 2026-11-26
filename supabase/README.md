@@ -17,21 +17,30 @@ Database for the check-in app: schema, row-level security and the RPCs the app c
 | `migrations/20261122000009_checkin_only.sql` | The app no longer serves dinner. `party_state` loses its dinner columns and entitlement is the party size, the server refuses any event that is not an entry check-in, and the dinner counters are switched off. Nothing is deleted. Apply only when the check-in-only app is deployed (see below) |
 | `migrations/20261122000010_flush_checkins.sql` | `admin_flush_preview` and `admin_flush_checkins`: an admin undoes every live check-in in one go (one void each; the log stays append-only) and can remove on-spot guests too. Only adds two functions, so it is safe to apply at any time, including while the earlier app is deployed |
 | `migrations/20261122000011_delete_user.sql` | `admin_delete_user`: delete a switched-off person for good, only when no scan, registration, review or edit names them. `admin_list_users` also reports `canDelete`. A switched-off or removed account now gets "Your account is switched off or removed" from every sync call, which the app uses to sign that phone out. Safe to apply at any time |
+| `migrations/20261122000012_review_gates_devices.sql` | `resolve_review` now clears the duplicate flag (staff, reason required, same lock as `push_batch`, so phones pull it like any party change), `admin_set_gate_count` (admin sets 1 to 20 gate desks; extra desks are switched off, never deleted) and `admin_list_devices` (admin: phones that reported in, with the person's name). Safe to apply at any time: the earlier app calls none of them |
+| `migrations/20261122000013_audit_feed.sql` | The admin audit log: `audit_feed` is replaced by a paged, classified feed of audit rows plus check-ins, undos and resets, with no mobile numbers or raw rows, bulk imports collapsed to one line. `admin_clear_audit_log` starts the log afresh from now (stores `event_settings.audit_since`; deletes nothing; refused once `is_live`). Safe to apply at any time: neither app called the old `audit_feed` |
+| `runbook_sign_everyone_out.sql` | One-off SQL for the cutover: switch everyone off except one admin, with a saved restore statement. Not a migration |
 | `seed_admin.sql` | Your first admin (edit the email first) |
 | `seed_dev.sql` | Fake test accounts and 120 fake parties. Testing only |
-| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 140 acceptance checks |
+| `test/` | Docker harness that applies everything to a throwaway Postgres and runs 185 acceptance checks |
 
 When you add a function, end its migration with `revoke execute on function ... from public, anon;` and grant it to `authenticated` by name. Postgres lets everyone run a new function by default; the checks fail if one is open to the signed-out role.
 
 ## Moving an existing project to check-in only
 
-Migrations 1 to 8 work with both the earlier app (entry and dinner) and the check-in-only app, so the check-in-only app can run against the same project while the earlier one is still deployed. **Migration 9 does not.** Apply it only when you retire the earlier app, and in this order:
+Migrations 1 to 8 work with both the earlier app (entry and dinner) and the check-in-only app. **Migration 9 does not**: the server then refuses dinner scans. Migrations 10 to 13 only add things and are safe at any time.
 
-1. Every phone has synced (no "Waiting to sync" on any phone). The server will refuse dinner scans that arrive after migration 9.
-2. Deploy the check-in-only app.
-3. Run `migrations/20261122000009_checkin_only.sql` in the SQL editor.
+Instead of syncing every phone first, sign everyone out. The order:
 
-It deletes nothing, so old dinner scans stay in the log. It is not reversible by a script: to go back, restore `party_state` and `_push_event` from migrations 1 and 8.
+1. In the SQL editor, run `runbook_sign_everyone_out.sql` (it switches everyone off except one admin and gives you a statement to restore them). Switched-off accounts can no longer sync, so no dinner scan can reach the server after this.
+2. Run migrations `…09` to `…13` (each in its own run, in order).
+3. Merge `refactor/checkin-only` to `main`. Vercel deploys the check-in-only app.
+4. Sign in as the admin that stayed on and check scan, Stats, Users and the new Admin screens.
+5. When phones are to be set up (11 Dec), switch people back on: run the restore statement from step 1, or use Account, Users and roles.
+
+What phones do meanwhile: a phone on the check-in-only app signs itself out (with scans it never sent it asks first, and those scans are lost: they can't be sent any more). A phone still on the earlier app shows "Please sign in again", and signing in says "not on the list". Its update banner waits until nothing is pending, so a phone with stuck dinner scans may need "Sign out anyway" once.
+
+Migration 9 deletes nothing, so old dinner scans stay in the log. It is not reversible by a script: to go back, restore `party_state` and `_push_event` from migrations 1 and 8.
 
 ## Turn on the sign-up hook
 
