@@ -8,10 +8,9 @@ import { createStore } from './store.ts'
  */
 const saved = createStore<{ byAccount: Record<string, string> }>({ byAccount: {} }, 'gh26.counters')
 
-/** Work at this counter (and in its mode), and make it this account's default for next time. */
+/** Work at this counter, and make it this account's default for next time. */
 export function applyCounter(code: string) {
-  const kind = getCounters().find((c) => c.code === code)?.kind
-  prefs.set({ counter: code, mode: kind === 'gate' ? 'entry' : 'dinner' })
+  prefs.set({ counter: code })
   const actorId = prefs.get().session?.actorId
   if (actorId) saved.set({ byAccount: { ...saved.get().byAccount, [actorId]: code } })
 }

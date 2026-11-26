@@ -8,27 +8,21 @@ import { Wheel } from '../components/Wheel.tsx'
 import { schoolShort } from '../lib/config.ts'
 import { plural } from '../lib/format.ts'
 import { useRoster } from '../lib/hooks.ts'
-import { prefs } from '../lib/prefs.ts'
 import type { Party } from '../lib/types.ts'
 import type { PartyState } from '../lib/state.ts'
 
 const LIMIT = 60
 
-function rowChip(mode: 'entry' | 'dinner', s: PartyState) {
-  if (mode === 'entry') return s.entered ? { kind: 'ok' as const, icon: 'login' as const, label: 'Checked in' } : { kind: 'neutral' as const, icon: 'clock' as const, label: 'Not arrived' }
-  if (!s.entered) return { kind: 'warn' as const, icon: 'alert' as const, label: 'Not in' }
-  if (s.remaining <= 0) return { kind: 'neutral' as const, icon: 'check' as const, label: 'Served' }
-  return { kind: 'ok' as const, icon: 'check-circle' as const, label: s.remaining + ' left' }
+function rowChip(s: PartyState) {
+  return s.entered ? { kind: 'ok' as const, icon: 'login' as const, label: 'Checked in' } : { kind: 'neutral' as const, icon: 'clock' as const, label: 'Not arrived' }
 }
 
 export function SearchScreen() {
-  const mode = prefs.use().mode
   const roster = useRoster()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [batch, setBatch] = useState<number | null>(null)
   const [notIn, setNotIn] = useState(false)
-  const [notServed, setNotServed] = useState(false)
   const [wheel, setWheel] = useState(false)
   const [flow, setFlow] = useState<Flow | null>(null)
 
@@ -41,14 +35,11 @@ export function SearchScreen() {
     const hit = (p: Party) => !needle || p.nameLc.includes(needle) || (code.length >= 4 && p.passCode.toLowerCase().replace('-', '').includes(code))
     return roster.parties
       .filter((p) => hit(p) && (batch === null || p.batchYear === batch))
-      .filter((p) => {
-        const s = roster.states.get(p.id)!
-        return (!notIn || !s.entered) && (!notServed || s.remaining > 0)
-      })
+      .filter((p) => !notIn || !roster.states.get(p.id)!.entered)
       .sort((a, b) => a.nameLc.localeCompare(b.nameLc))
-  }, [roster, q, batch, notIn, notServed])
+  }, [roster, q, batch, notIn])
 
-  const filtered = q.trim() !== '' || batch !== null || notIn || notServed
+  const filtered = q.trim() !== '' || batch !== null || notIn
   const shown = results.slice(0, LIMIT)
 
   return (
@@ -67,9 +58,6 @@ export function SearchScreen() {
         <button type="button" className={'fchip' + (notIn ? ' on' : '')} aria-pressed={notIn} onClick={() => setNotIn(!notIn)}>
           Not checked in
         </button>
-        <button type="button" className={'fchip' + (notServed ? ' on' : '')} aria-pressed={notServed} onClick={() => setNotServed(!notServed)}>
-          Not served
-        </button>
       </div>
 
       {roster && results.length > 0 && (
@@ -79,7 +67,7 @@ export function SearchScreen() {
           </div>
           <div className="group">
             {shown.map((p) => {
-              const c = rowChip(mode, roster.states.get(p.id)!)
+              const c = rowChip(roster.states.get(p.id)!)
               return (
                 <button key={p.id} type="button" className="rrow" onClick={() => setFlow({ kind: 'guest', partyId: p.id, method: 'search' })}>
                   <div className="grow stack" style={{ gap: 2 }}>
@@ -110,7 +98,7 @@ export function SearchScreen() {
           </p>
           <div className="stack g2" style={{ width: '100%', marginTop: 12 }}>
             {filtered && (
-              <Btn kind="secondary" onClick={() => { setBatch(null); setNotIn(false); setNotServed(false); setQ('') }}>
+              <Btn kind="secondary" onClick={() => { setBatch(null); setNotIn(false); setQ('') }}>
                 Clear filters
               </Btn>
             )}
@@ -120,7 +108,7 @@ export function SearchScreen() {
       )}
 
       <ActionToast hidden={!!flow || wheel} />
-      {flow && <ResultFlow flow={flow} mode={mode} onClose={() => setFlow(null)} />}
+      {flow && <ResultFlow flow={flow} onClose={() => setFlow(null)} />}
       {wheel && (
         <BatchSheet
           years={years}

@@ -16,18 +16,6 @@ import { Alert, Btn, Chip, Group, Icon, Seg, Sheet, Switch } from './ui.tsx'
 export function CounterPicker({ initial, onDone, onClose }: { initial: string | null; onDone: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState(initial)
   const counters = useCounters()
-  const sec = (title: string, kind: 'gate' | 'dinner') => (
-    <Group header={title}>
-      <div role="radiogroup" aria-label={title}>
-        {activeCounters(counters, kind).map((c) => (
-          <button key={c.code} type="button" className="cell" role="radio" aria-checked={code === c.code} onClick={() => setCode(c.code)}>
-            <span className="grow">{c.label}{c.kind === 'gate' ? ' · Entry' : ''}</span>
-            <span className={'radio' + (code === c.code ? ' on' : '')}>{code === c.code && <Icon name="check" size="s" />}</span>
-          </button>
-        ))}
-      </div>
-    </Group>
-  )
   return (
     <Sheet
       title="Choose counter"
@@ -44,8 +32,16 @@ export function CounterPicker({ initial, onDone, onClose }: { initial: string | 
         </Btn>
       }
     >
-      {sec('Gate', 'gate')}
-      {sec('Dinner counters', 'dinner')}
+      <Group header="Gate">
+        <div role="radiogroup" aria-label="Gate">
+          {activeCounters(counters).map((c) => (
+            <button key={c.code} type="button" className="cell" role="radio" aria-checked={code === c.code} onClick={() => setCode(c.code)}>
+              <span className="grow">{c.label}</span>
+              <span className={'radio' + (code === c.code ? ' on' : '')}>{code === c.code && <Icon name="check" size="s" />}</span>
+            </button>
+          ))}
+        </div>
+      </Group>
       <div className="t-cap muted px5">Your counter is saved with every scan, so staff can trace it.</div>
     </Sheet>
   )
@@ -83,7 +79,7 @@ export function AccountSheet() {
         <Group>
           <button type="button" className="cell" onClick={() => setPicker(true)}>
             <span className="grow">Counter</span>
-            <span className="val">{p.mode === 'dinner' ? 'Dinner' : 'Entry'} · {counterLabel(p.counter ?? '')}</span>
+            <span className="val">{counterLabel(p.counter ?? '')}</span>
             <Icon name="chev-r" size="s" className="chev" />
           </button>
         </Group>
@@ -115,6 +111,8 @@ export function AccountSheet() {
             <button type="button" className="cell" onClick={() => go('/admin/users')}><Icon name="users" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Users and roles</span><Icon name="chev-r" size="s" className="chev" /></button>
             <button type="button" className="cell" onClick={() => go('/admin/import')}><Icon name="download" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Import guests</span><Icon name="chev-r" size="s" className="chev" /></button>
             <button type="button" className="cell" onClick={() => go('/admin/audit')}><Icon name="history" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Audit log</span><Icon name="chev-r" size="s" className="chev" /></button>
+            <button type="button" className="cell" onClick={() => go('/admin/devices')}><Icon name="phone" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Devices</span><Icon name="chev-r" size="s" className="chev" /></button>
+            <button type="button" className="cell" onClick={() => go('/admin/counters')}><Icon name="settings" size="m" style={{ color: 'var(--text2)' }} /><span className="grow">Gate desks</span><Icon name="chev-r" size="s" className="chev" /></button>
           </Group>
         )}
 
@@ -123,6 +121,16 @@ export function AccountSheet() {
             <div className="cell"><span className="grow">Pretend there’s no signal</span><Switch on={p.demoOffline} onChange={(demoOffline) => { prefs.set({ demoOffline }); void checkOnline() }} label="Pretend offline" /></div>
             <button type="button" className="cell" onClick={() => { prefs.set({ sessionExpired: true }); close() }}><span className="grow">Expire my session</span></button>
             <button type="button" className="cell" onClick={() => void resetDemoData().then(close)}><span className="grow">Reset demo data</span></button>
+          </Group>
+        )}
+
+        {hasRole(s, 'admin') && (
+          <Group header="Danger zone" footer="Clears every check-in for a fresh start, for example after a rehearsal. Registrations stay.">
+            <button type="button" className="cell" style={{ color: 'var(--bad-text)' }} onClick={() => go('/admin/flush')}>
+              <Icon name="alert" size="m" />
+              <span className="grow">Flush all check-ins</span>
+              <Icon name="chev-r" size="s" className="chev" />
+            </button>
           </Group>
         )}
 

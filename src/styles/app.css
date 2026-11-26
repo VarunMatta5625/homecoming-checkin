@@ -68,7 +68,6 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(-
 .rrow.struck .nm{text-decoration:line-through;color:var(--text2)}
 button.rrow:active,button.cell:active{background:var(--fill2)}
 .lead36{width:36px;height:36px;border-radius:10px}
-.pc-label b{font-weight:600}
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}

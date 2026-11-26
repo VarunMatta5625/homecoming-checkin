@@ -1,10 +1,33 @@
 # Homecoming 2026 check-in: project context
 
-Last updated 22 Nov 2026. Everything done so far, why, and what is left. Read this first when picking the project up again.
+Last updated 25 Nov 2026 (check-in-only refactor). Everything done so far, why, and what is left. Read this first when picking the project up again.
+
+## Admin and staff screens added 26 Nov 2026 (migrations 12 and 13)
+
+Scope for the 8 Dec feature freeze. All of it is on the branch, uncommitted until asked.
+
+- **Resolve a duplicate flag.** Stats, Review, tap a party: a sheet shows the flagged guest and the guest it may repeat, and "Not a duplicate" with a required reason clears `possible_duplicate_of` for everyone (`resolve_review`, migration 12). It is a normal party change (new `change_seq`), so phones pull it with the normal cursor; this phone updates at once (`actions.resolveReview`). Needs signal. A true duplicate is still fixed with Correct record on the guest.
+- **Gate desks.** Account, Admin, Gate desks: a stepper for the number of desks, 1 to 20 (`admin_set_gate_count`). Desks above the number are switched off, not deleted. Other phones copy the list within ten minutes; a phone already at a switched-off desk can finish its shift.
+- **Contact lookup.** Guest screen, staff and admin: "Show mobile and email" calls `get_party_contact` (audited). The number lives in component state only, never in Dexie or localStorage. A guest registered on a phone that has not synced has no server contact yet and says so.
+- **Devices.** Account, Admin, Devices (`admin_list_devices`, polls every 15 s): who is on which desk, online now or last seen, unsent items, app version different from this phone, and a clock more than two minutes off. The heartbeat now reports only items still waiting to be sent, not the ones the server refused (that also fixes a false "other phone has unsent scans" warning on the Flush screen).
+- **Audit log.** Account, Admin, Audit log reads the server (`audit_feed`, migration 13): check-ins, undos, resets, registrations, edits, imports (one line with a count), contact lookups, pass-list downloads, user changes, flushes, gate changes, from the start to now, newest first, 100 at a time. It carries no mobile numbers or raw rows. "Clear the audit log" (reason and typed sentence) does not delete anything: it stores `event_settings.audit_since` and the feed starts there, so only event activity shows. Refused once `is_live`. Run it after the rehearsals (and after "Flush all check-ins"), before go-live. Rehearsal scans stay in `scan_events` until the Reset test activity SQL.
+- **Cutover without syncing phones.** `supabase/runbook_sign_everyone_out.sql` switches everyone off except one admin (restore statement included); order in `supabase/README.md`. Tested on a throwaway Postgres, including the refusal when the kept email is not an active admin.
+- Checks: Test Files 13 passed (13) Tests 198 passed (198), and 185 database checks (`supabase/test/harness.sh`, run on this branch).
+
+## Check-in-only refactor (branch refactor/checkin-only, 25 Nov 2026)
+
+Dinner scanning is gone. The app has one scan: check-in at a gate. Removed: the Entry/Dinner switch, the dinner result sheets (valid, check-in-first, already-served, heads-up, served), serve counts, the Dinner stats tab, dinner counters, the "Not served" search filter, the Dinner override import column, and the dinner reset in Correct record. What stays: scan, undo, correct (reset check-in), search, register, activity, stats (Entry and Breakdown), Review (possible duplicates only), admin.
+
+- It runs against the same Supabase project and the same env variables as main. Migrations 1 to 8 are untouched and work with both apps. **The branch ignores dinner rows that are already in the database**: `liveEvents` keeps only `entry`, `backend/supabase.ts` drops dinner events when it reads a snapshot, and `counters.ts` keeps only gate counters.
+- `supabase/migrations/20261122000009_checkin_only.sql` is the database half (drops the dinner columns from `party_state`, refuses non-entry events, switches the dinner counters off). It is tested by `supabase/test/harness.sh` but **must not be applied to the hosted project while the earlier dinner app is in use**, because it would refuse that app's dinner scans. The cutover signs everyone out instead of syncing phones; the order is in `supabase/README.md` and the SQL in `supabase/runbook_sign_everyone_out.sql`.
+- **Flush (migration 10, `supabase/migrations/20261122000010_flush_checkins.sql`).** Account, Danger zone, "Flush all check-ins" (admin only, enforced in the database). It writes one void per live check-in in a single transaction (same lock as `push_batch`), reason `Flush: <why>`, method `staff`, one shared timestamp. Void rather than delete because phones only pull rows with a higher `seq` and never see a server delete, and the log stays append-only. The admin can also remove on-spot guests (soft delete like a list Replace, contacts deleted). The screen asks for a reason and a typed sentence that carries the count (`flush 299 check-ins`), shows phones that still report unsent items, and is blocked while this phone has unsent items. There is no server guard against a straggler phone: its old scans arrive after the flush and check guests in again, so run the flush again once that phone has synced. Migration 10 only adds functions, so it can be applied to the shared project at any time. The Audit screen shows each flush as one line (`lib/flush.ts`).
+- **Removing people (migration 11, `20261122000011_delete_user.sql`).** "Remove from the list" only switches a person off. A switched-off or deleted account fails every sync call with `Your account is switched off or removed` (SQLSTATE 42501, from `_require_staff`), and signing in again gets "not on the list". The app (`lib/authError.ts`) reads that wording, sets `prefs.accessRemoved` and shows `AccessRemoved.tsx`: with nothing unsent the phone signs itself out; with unsent scans it asks first (they can no longer be sent). If an admin switches the person back on, the next successful pull clears the screen. Before migration 11 is applied the old "please sign in again" banner shows instead. **Delete permanently** (Admin, Users, a switched-off person) is offered only when `admin_list_users` says `canDelete`: no scan, registered guest, review, added user or edit names them (their own sign-in entries in the audit log are allowed and lose the account pointer). The Authentication, Users record in Supabase is not touched. A phone that is offline keeps working on its local data until it next reaches the server, and a Supabase sign-in token stays valid for up to an hour but is useless without a staff row.
+- Dexie is unchanged (still version 1). `Party.entitledOverride` is no longer read from the server or stored; old rows that still carry it are harmless.
+- The screenshots in `docs/screenshots` were re-shot from the demo app for check-in only (scan sheets, Stats, Activity, Search, Guest, Correct, Review, Account, offline, dark mode and the hero). Sign-in, Register, Pass, Import, Users and Not-on-the-list were not affected and kept their old shots.
 
 ## What this is
 
-A mobile-first, offline-first PWA for the GITAM Homecoming 2026 alumni event (12 Dec 2026, Visakhapatnam). Volunteers scan a guest's QR at the gate (entry) and at dinner counters (serving), register on-spot guests, and see their own activity. Staff see stats, a needs-review queue and can correct records. Admins manage who can sign in and read the audit log. Primary devices: iPhone 16 and OnePlus 11.
+A mobile-first, offline-first PWA for the GITAM Homecoming 2026 alumni event (12 Dec 2026, Visakhapatnam). Volunteers scan a guest's QR at the gate (check-in only: there is no dinner scan any more), register on-spot guests, and see their own activity. Staff see stats, a needs-review queue and can correct records. Admins manage who can sign in and read the audit log. Primary devices: iPhone 16 and OnePlus 11.
 
 The design came from a Claude Design artifact and its design system. The build spec ("GITAM Homecoming 2026 - Check-in App") lives in the original conversation; its schema, RPC and acceptance-test sections are implemented in `supabase/`.
 
@@ -25,8 +48,8 @@ npm install
 npm run dev              # http://localhost:5173
 npm run dev:phone        # HTTPS on the LAN (iPhone camera)
 npm run build            # static output in dist/, SPA rewrite in vercel.json
-npm test                 # vitest, 208 tests: Stats, undo, counters, local database
-supabase/test/harness.sh # 93 database acceptance checks (needs Docker)
+npm test                 # vitest, 198 tests: Stats, state, undo, counters, audit wording, devices, local database
+supabase/test/harness.sh # 185 database acceptance checks (needs Docker)
 ```
 
 Modes (decided in `src/lib/config.ts`):
@@ -40,7 +63,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 
 ## Code map (`src/`)
 
-- `screens/`: Scan, Search, Register, Activity, Stats, Review, GuestDetail, Admin (Users, Audit), SignIn, Setup.
+- `screens/`: Scan, Search, Register, Activity, Stats, Review, GuestDetail, Admin (Users), Audit, Devices, Counters, Flush, Import, SignIn, Setup.
 - `components/`: ui.tsx (design-system primitives), ResultFlow.tsx (one sheet for every scan result), UndoSheet, CorrectionSheet, AccountSheet, layout.tsx (TopRow, Banners, TabBar, re-sign-in sheet).
 - `lib/`: state.ts (`partyState`, mirrors the SQL view), actions.ts (all writes), sync.ts (flush outbox, pull changes, heartbeat, counter list), counters.ts (the counter list, from the server's table, built-in until then), db.ts (Dexie plus `finishWipe`), prefs.ts and store.ts (localStorage store, follows other tabs), layers.ts (history-backed sheets), config.ts.
 - `backend/`: `types.ts` (the seam), `supabase.ts` (live), `demoBackend.ts` (demo), `index.ts` (picks one). The Supabase client is created lazily so demo mode never builds one.
@@ -52,7 +75,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Migrations in `supabase/migrations/` (run in order): schema, security (RLS, audit triggers, last-admin guard, grants), RPCs, an `update_party` lock fix (`…0004`), and a lock-down pass (`…0005`: function grants, no direct reads of contacts or notes, stricter voids), and a sign-up hook (`…0006`: only listed emails can create an account; it must also be switched on in the dashboard, Authentication, Hooks). When the hook refuses, Google sends the person back with `error_description` containing `NOT_ON_LIST`; `src/lib/signinReturn.ts` reads it before the Supabase client clears the address and the sign-in screen shows "You're not on the list yet". `supabase/setup_all.sql` is all of them plus fake seed data for a brand-new project.
 - RPCs: `whoami`, `get_snapshot` (paged; used for the first download and incremental pulls), `push_batch`, `device_heartbeat`, `get_party_contact`, `resolve_review`, `update_party`, `admin_set_user`, `admin_list_users`, `audit_feed`.
 - All writes go through SECURITY DEFINER RPCs; tables have read-only RLS policies. The roster holds only the last 4 digits of a mobile number. Full mobile and email are in `party_contacts` (staff and up).
-- 93 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, two devices' servings add, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
+- 185 acceptance checks (`supabase/test/checks.sql`) run as real roles against a throwaway Postgres: unlisted and inactive users get nothing, volunteers cannot reach staff or admin data, replayed batches create no duplicates, a second device's check-in of the same party is flagged as a repeat, dinner scans are refused, undo rules, last-admin guard, append-only events, audit entries, no function open to the signed-out role, no direct reads of contacts or notes, voids that must match the guest.
 - Data access settings when the project was created: Data API on, "automatically expose new tables" off. Verified that both settings pass all checks.
 
 ### Auth
@@ -68,7 +91,7 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 - Pass codes are `GH26-` plus 5 characters (spec alphabet); the design mock showed 4.
 - Tabs follow the design (Scan, Search, Register, Activity, plus Stats for staff). Admin screens open from the Account sheet.
 - Entry headcount is editable (stepper, defaults to the party size) per spec 15; the design shows fixed buttons only.
-- Counters are hardcoded in `src/lib/config.ts` and seeded in the `counters` table (Gate desk 1 to 2, Dinner counter 1 to 10). A gate counter starts the scanner in Entry mode, a dinner counter in Dinner mode.
+- Counters live in the `counters` table (Gate desk 1 to 2); phones copy it every ten minutes and fall back to `BUILTIN_COUNTERS` in `src/lib/config.ts` until the first copy. The table still holds Dinner counter 1 to 10 from the earlier version, which the app ignores and migration 9 switches off.
 - Blocked scans are not stored (events are real-world facts only), so Activity does not list them.
 - Stats "Active/Quiet" chips are derived from events. Stats and the needs-review list are derived locally; the `stats_*` and `review_queue` RPCs are not built.
 - UI prefs and the session live in localStorage, not a Dexie `meta` table.
@@ -99,14 +122,14 @@ Android phone over adb: `adb -s <ip:port> reverse tcp:5173 tcp:5173`, then open 
 ## Not verified yet
 
 - Real camera scans of real passes against live data (only the dev "simulate a scan" panel and an empty viewfinder were used).
-- Add to Home Screen and standalone mode on a real iPhone and Android, and Google sign-in inside an installed iPhone PWA (known to be awkward; test early).
+- Standalone mode (opened from the browser's own install or Add to Home Screen menu) on a real iPhone and Android, and Google sign-in inside an installed iPhone PWA (known to be awkward; test early).
 - Two phones offline for a long stretch, then reconnecting, on live data.
 - GITAM Workspace accounts: an admin policy may block third-party OAuth apps. The staff test address is a `student.gitam.edu` account; test with real GITAM accounts early.
 - Realtime subscription (not built; phones pull every 15 s).
 
 ## Still to do
 
-See `MISSING_SCREENS.md` (counters management, pending-changes detail screen). Also: Admin Audit screen reading `audit_feed`; `get_party_contact` in the guest screen; Devices and sync screen; stats RPCs if wanted; the real guest import and the pass list export are built (see "Guest import" below).
+See `MISSING_SCREENS.md` (counter naming; the pending-changes screen is not needed for now). Also: stats RPCs if wanted; the real guest import and the pass list export are built (see "Guest import" below).
 
 ## Guest import (23 Nov 2026 branch)
 
@@ -165,7 +188,9 @@ To reset only the test scans later, see "Reset test activity" in `supabase/READM
 
 ## Event timeline (from the spec)
 
-Feature freeze 8 Dec. Version freeze and full rehearsal 9 Dec (about 10 phones: 2 gate and 10 dinner roles, offline flapping). Code freeze and final import 10 Dec. Every volunteer phone installed, signed in online and roster downloaded 11 Dec. Set `is_live = true` on the morning of 12 Dec.
+Feature freeze 8 Dec. Version freeze and full rehearsal 9 Dec (about 10 phones, offline flapping). Code freeze and final import 10 Dec. Every volunteer phone installed, signed in online and roster downloaded 11 Dec. Set `is_live = true` on the morning of 12 Dec.
+
+**Before go-live (after the 9 Dec rehearsal, before phones are set up on 11 Dec):** the Flush button only voids check-ins, so rehearsal scans and voids stay in `scan_events`. Run the "Reset test activity" SQL in `supabase/README.md` (it deletes all scans and on-spot guests, and refuses once `is_live` is true), then Admin, Audit log, "Clear the audit log" so the log shows only event activity, sign every test phone out and back in, then set `is_live = true`.
 
 ## Rules to keep
 

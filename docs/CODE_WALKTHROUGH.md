@@ -10,7 +10,7 @@ This document explains **how the code works**: architecture, data model, every m
 ![Vite 8](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![Dexie](https://img.shields.io/badge/Dexie-IndexedDB-orange?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)
-![DB checks](https://img.shields.io/badge/database%20checks-93-30d158?style=flat-square)
+![DB checks](https://img.shields.io/badge/database%20checks-140-30d158?style=flat-square)
 
 [Architecture](#1-architecture) · [Repo map](#2-repo-map) · [Boot](#3-boot-and-routing) · [Types](#4-core-types) · [Stores](#5-stores-prefs-net-ui) · [Local DB](#6-local-database-dexie) · [Derived state](#7-derived-state) · [Writes](#8-writes-actionsts) · [Sync](#9-sync-syncts) · [Backend seam](#10-the-backend-seam) · [Auth](#11-auth-flow) · [Helpers](#12-small-modules) · [UI](#13-ui-layer) · [Screens](#14-screens) · [Build](#15-build-pwa-and-hosting) · [SQL](#16-the-database) · [Tests and CI](#17-tests-scripts-and-ci) · [Conventions](#18-conventions-and-syntax) · [Run](#19-run-and-deploy)
 
@@ -59,7 +59,7 @@ Three rules drive the whole design, and most of the code is a consequence of the
 ├── index.html                 PWA meta tags, mounts #root, loads src/main.tsx
 ├── vite.config.ts             __APP_VERSION__, production-key guard, PWA manifest + Workbox
 ├── vitest.config.ts           test config: node by default, jsdom per file by docblock, no PWA plugin
-├── vercel.json                SPA rewrite, no-cache for sw.js
+├── vercel.json                SPA rewrite, security headers, no-cache for sw.js
 ├── tsconfig*.json             bundler mode, erasableSyntaxOnly, verbatimModuleSyntax
 ├── .oxlintrc.json             react/rules-of-hooks error, only-export-components warn
 ├── src/
@@ -69,7 +69,7 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   ├── lib/                   logic with no JSX
 │   │   ├── types.ts           Party, ScanEvent, OutboxItem, Session, hasRole
 │   │   ├── state.ts           partyState(), liveEvents(), groupByParty()
-│   │   ├── actions.ts         checkIn, serveDinner, voidEvent, resetCheckpoints, registerOnSpot ...
+│   │   ├── actions.ts         checkIn, voidEvent, resetEntry, registerOnSpot ...
 │   │   ├── sync.ts            flush(), checkOnline(), retryFailed(), startSync(), kickSync(); each cycle also pulls, sends a heartbeat and refreshes the counters
 │   │   ├── db.ts              Dexie schema, clearLocalData(), finishWipe()
 │   │   ├── store.ts           createStore(): external store + localStorage
@@ -95,18 +95,19 @@ Three rules drive the whole design, and most of the code is a consequence of the
 │   ├── components/            ui.tsx primitives (with ParkingChip), ResultFlow, UndoSheet, CorrectionSheet,
 │   │                          AccountSheet (with CounterPicker), layout (TopRow, Banners, TabBar), Qr, Wheel, ActionToast, sprite
 │   ├── screens/               SignIn, Setup, Scan, Search, Register, Activity, Stats, Review,
-│   │                          GuestDetail, Admin (Users, Audit), Import, Privacy,
+│   │                          GuestDetail, Admin (Users), Audit, Devices, Counters, Import, Privacy,
 │   │                          StatsCharts, StatsFilter
 │   ├── test/fixtures.ts       shared builders for the tests: party(), ev(), voidOf(), rowsOf(), rosterOf(), resetIds(), T0, MIN (`*.test.ts[x]` sit next to the code they test)
 │   └── styles/                tokens.css (generated), gh.css (components), app.css (layout), stats.css (Stats)
 ├── supabase/
-│   ├── migrations/            8 files, run in order
+│   ├── migrations/            11 files, run in order
 │   ├── setup_all.sql          all migrations + fake data for a new project
 │   ├── seed_admin.sql, seed_dev.sql
 │   └── test/                  harness.sh, stub_auth.sql, checks.sql
 ├── public/guest-list-guide.pdf  printable guide for the import template
 ├── scripts/test_passes.py     printable QR sheets (ReportLab)
 ├── scripts/make_guest_guide.py  generates the PDF guide
+├── scripts/build_setup_all.sh builds supabase/setup_all.sql from the migrations (CI checks it)
 └── .github/workflows/ci.yml   lint, typecheck, tests, build, database checks
 ```
 
@@ -170,7 +171,7 @@ const staff = hasRole(role, 'staff'); const admin = hasRole(role, 'admin')
   <Route path="/scan" .../> <Route path="/search" .../> <Route path="/register" .../>
   <Route path="/activity" .../> <Route path="/guest/:id" .../>
   {staff && <Route path="/stats" .../>}  {staff && <Route path="/stats/review" .../>}
-  {admin && <Route path="/admin/users" .../>}  {admin && <Route path="/admin/import" .../>}  {admin && <Route path="/admin/audit" .../>}
+  {admin && <Route path="/admin/users" .../>}  {admin && <Route path="/admin/import" .../>}  {admin && <Route path="/admin/audit" .../>}  {admin && <Route path="/admin/flush" .../>}
   <Route path="*" element={<Navigate to="/scan" replace />} />
 </Routes>
 ```
@@ -183,7 +184,7 @@ A route that is not registered for the role falls through to `*` and redirects t
 
 ```ts
 export type Role = 'volunteer' | 'staff' | 'admin'
-export type Checkpoint = 'entry' | 'dinner'
+export type Checkpoint = 'entry'
 export type Method = 'qr' | 'search' | 'code' | 'staff'
 
 export interface Party {             // one roster row; held on every phone
@@ -192,14 +193,14 @@ export interface Party {             // one roster row; held on every phone
   batchYear: number; school: string | null; department: string | null; course: string | null
   mobileLast4: string                // never the full number
   spouse: 'no' | 'yes' | 'maybe'; children: number; partySize: number
-  entitledOverride: number | null; parking: 'none' | 'two_wheeler' | 'four_wheeler'
+  parking: 'none' | 'two_wheeler' | 'four_wheeler'
   possibleDuplicateOf: string | null; deletedAt: string | null
 }
 
 export interface ScanEvent {         // append-only
   id: string; seq?: number           // seq is server order; absent until the server has it
   partyId: string; checkpoint: Checkpoint; action: 'pass' | 'void'
-  qty: number                        // entry: headcount, dinner: servings
+  qty: number                        // headcount checked in
   voidsEventId?: string | null; reason?: string | null; overrideReason?: string | null
   method: Method; actorId: string; actorName: string; counter: string; deviceId: string
   clientAt: number; receivedAt?: number    // epoch ms
@@ -253,7 +254,7 @@ Five stores use it (the Stats screen also keeps a private one, `view`, so going 
 
 | Store | Key | Holds |
 | --- | --- | --- |
-| `prefs` ([`prefs.ts`](../src/lib/prefs.ts)) | `gh26.prefs` | `deviceId`, `counter`, `mode`, `theme`, `bigText`, `session`, `sessionExpired`, `rosterAt`, `lastSyncAt`, `homeScreenDone`, `cameraAsked`, `demoOffline`, `wipePending`, `partyCursor`, `eventCursor` |
+| `prefs` ([`prefs.ts`](../src/lib/prefs.ts)) | `gh26.prefs` | `deviceId`, `counter`, `theme`, `bigText`, `session`, `sessionExpired`, `rosterAt`, `lastSyncAt`, `cameraAsked`, `demoOffline`, `wipePending`, `partyCursor`, `eventCursor` |
 | `net` ([`sync.ts`](../src/lib/sync.ts)) | none (memory) | `online`, `syncing` |
 | `ui` ([`ui.ts`](../src/lib/ui.ts)) | none | `account` (sheet open), `last` (last action for the undo toast, with `until`, the time its undo window closes), `needRefresh`, `dbUpdated` (another tab upgraded the local database, so show "Reload this page"), `updateSW` |
 | remembered counter ([`counter.ts`](../src/lib/counter.ts)) | `gh26.counters` | `byAccount: { [actorId]: counterCode }` |
@@ -307,39 +308,32 @@ It never throws and always resolves within 4 s. The module-level `wiping` promis
 
 ```ts
 export function partyState(party: Party, events: ScanEvent[]): PartyState {
-  const voided = new Set<string>()
-  for (const e of events) if (e.action === 'void' && e.voidsEventId) voided.add(e.voidsEventId)
-  const live = events.filter((e) => e.action === 'pass' && !voided.has(e.id))
-
-  const entries = live.filter((e) => e.checkpoint === 'entry')
+  const entries = liveEvents(events)
     .sort((a, b) => a.clientAt - b.clientAt || (a.receivedAt ?? Infinity) - (b.receivedAt ?? Infinity))
   const first = entries[0]
-  const dinners = live.filter((e) => e.checkpoint === 'dinner')
-  const served = dinners.reduce((n, e) => n + e.qty, 0)
-  const entitled = party.entitledOverride ?? party.partySize
-
-  const entered = !!first
-  const overServed = served > entitled
-  const servedWithoutEntry = served > 0 && !entered
   const possibleDuplicate = party.possibleDuplicateOf !== null
-  return { partyId: party.id, entitled, entered, enteredAt: first?.clientAt ?? null,
+  return { partyId: party.id, entitled: party.partySize, entered: !!first, enteredAt: first?.clientAt ?? null,
     headcount: first?.qty ?? null, enteredCounter: first?.counter ?? null, enteredBy: first?.actorName ?? null,
-    served, remaining: Math.max(0, entitled - served),
-    lastServedAt: dinners.length ? Math.max(...dinners.map((e) => e.clientAt)) : null,
-    overServed, servedWithoutEntry, duplicateEntry: entries.length > 1, possibleDuplicate,
-    needsReview: overServed || servedWithoutEntry || possibleDuplicate }
+    duplicateEntry: entries.length > 1, possibleDuplicate, needsReview: possibleDuplicate }
+}
+
+export function liveEvents(events: ScanEvent[]): ScanEvent[] {
+  const voided = new Set<string>()
+  for (const e of events) if (e.action === 'void' && e.voidsEventId) voided.add(e.voidsEventId)
+  return events.filter((e) => e.action === 'pass' && e.checkpoint === 'entry' && !voided.has(e.id))
 }
 ```
 
 Line by line:
 
-- **Voids.** First pass collects every id that some void points at. A void is never "live" itself (`action === 'pass'` filter), so voiding a void has no effect; the server rejects it anyway.
+- **Voids.** `liveEvents` collects every id that some void points at. A void is never "live" itself (`action === 'pass'` filter), so voiding a void has no effect; the server rejects it anyway.
 - **Entry.** Several entry events can exist (two gates, offline). Sort by `clientAt`, ties broken by `receivedAt`, with `?? Infinity` so an unsynced event (no `receivedAt`) sorts after a synced one at the same instant. The earliest wins; `duplicateEntry` records that there were more.
-- **Dinner.** Servings are **summed** (`qty` is "how many meals"). That is what lets two offline counters both serve and have the total exceed `entitled` afterwards.
-- **`needsReview`** is exactly the three conditions a human must look at. `duplicateEntry` is computed but is not part of it.
-- `liveEvents(events)` exposes the same void filter for code that only needs the live list (Stats and `stats.ts`, Review, ResultFlow, and `resetCheckpoints` in `actions.ts`). `groupByParty` buckets events once so `useRoster` is O(parties + events).
+- **Check-ins only.** `liveEvents` keeps only `entry` events. The shared database may still hold dinner scans written by the earlier version of the app; they are ignored here (and dropped when a snapshot is read, in `backend/supabase.ts`).
+- **`entitled`** is the party size on the pass.
+- **`needsReview`** is true only for a possible duplicate (the guest shares a mobile number with another). `duplicateEntry` is computed but is not part of it.
+- `liveEvents(events)` exposes the same void filter for code that only needs the live list (Stats and `stats.ts`, Review, ResultFlow, and `resetEntry` in `actions.ts`). `groupByParty` buckets events once so `useRoster` is O(parties + events).
 
-This logic exists **twice**. The SQL view `party_state` ([schema migration](../supabase/migrations/20261122000001_schema.sql)) has the same rules written with a `distinct on (party_id) ... order by party_id, client_at, received_at` for "earliest entry" and `sum(qty)` for servings. The database acceptance checks assert the flags the view produces for scripted scenarios. If you change one, change the other.
+This logic exists **twice**. The SQL view `party_state` ([schema migration](../supabase/migrations/20261122000001_schema.sql)) has the same rules written with a `distinct on (party_id) ... order by party_id, client_at, received_at` for "earliest entry". The database acceptance checks assert the flags the view produces for scripted scenarios. If you change one, change the other.
 
 ### 7.1 [`src/lib/hooks.ts`](../src/lib/hooks.ts): reading state in components
 
@@ -397,9 +391,8 @@ async function commit(events: ScanEvent[], party?: { party: Party; contact: Part
 | Function | What it writes |
 | --- | --- |
 | `checkIn(partyId, qty, method)` | one `pass` event, `checkpoint: 'entry'`, `qty` = headcount |
-| `serveDinner(partyId, qty, method)` | one `pass` event, `checkpoint: 'dinner'`, `qty` = servings |
 | `voidEvent(original, reason, method)` | one `void` event with `voidsEventId`, `qty: 0`. First checks locally that no void for it exists yet and returns silently if one does. Who may undo is decided before it is called, by `undoStatus` (see 12.3) |
-| `resetCheckpoints(partyId, checkpoints, reason)` | staff only (`hasRole` check, reason must be non-empty). Finds every live event of the chosen checkpoints with `liveEvents()` and writes one void per event, all in one `commit` |
+| `resetEntry(partyId, reason)` | staff only (`hasRole` check, reason must be non-empty). Finds every live check-in of the party with `liveEvents()` and writes one void per event, all in one `commit` |
 | `registerOnSpot(input)` | builds a `Party` (new id, `uniquePassCode()`, `newQrToken()`, `source: 'onspot'`) and a `PartyContact` (`'+91' + digits`), plus an entry event with `qty = partySize`, in one `commit` |
 | `findPossibleDuplicate(mobile, name, batchYear)` | local heuristic: same last 4 digits **and** (same batch or a shared name token longer than 2 chars). The server does the authoritative match on the full number |
 | `downloadRoster(onProgress)` | calls `finishWipe()` and throws if the previous sign-out wipe has not finished, then calls `backend.fetchSnapshot`, `bulkPut`s parties and events in one transaction, then stores `rosterAt`, `lastSyncAt` and the cursors |
@@ -468,7 +461,7 @@ The cursors are the largest `change_seq` (parties) and `seq` (events) already re
 ### 9.3 heartbeat, connectivity, scheduler
 
 - `heartbeat()` calls `device_heartbeat` with `deviceId`, counter, `db.outbox.count()`, `APP_VERSION` and the phone's current time; failures are ignored. The server keeps one row per (device, user) with a clock offset, so a phone handed to another person gets a second row and nobody can rewrite someone else's row.
-- `refreshCounters()` copies the server's `counters` table with `backend.listCounters()` into `setCounters()` in `lib/counters.ts`, at most once per `COUNTERS_EVERY_MS` (ten minutes). It does nothing without a session, while `wipePending` is set, or when the backend has no `listCounters` (demo mode). On failure it resets its timer so the next cycle retries. `setCounters` keeps only `gate` and `dinner` rows with a code and a label (the table also allows `desk`, which the app ignores), puts gates first and dinner counters in natural order, and ignores the whole list if no counter is active.
+- `refreshCounters()` copies the server's `counters` table with `backend.listCounters()` into `setCounters()` in `lib/counters.ts`, at most once per `COUNTERS_EVERY_MS` (ten minutes). It does nothing without a session, while `wipePending` is set, or when the backend has no `listCounters` (demo mode). On failure it resets its timer so the next cycle retries. `setCounters` keeps only `gate` rows with a code and a label (the table also allows `dinner` and `desk`, which the app ignores), puts them in natural order, and ignores the whole list if no counter is active.
 - `checkOnline()` calls `backend.ping()`, sets `net.online`, and if online runs `syncCycle()` = `flush()`, `pull()`, then `heartbeat()` and `refreshCounters()` fire-and-forget. `navigator.onLine` is only trusted when it says offline. When it says online, the Supabase `ping` still makes a real request: `fetch(SUPABASE_URL + '/auth/v1/health', { headers: { apikey: SUPABASE_KEY }, cache: 'no-store', signal: AbortSignal.timeout(5000) })`, and returns `res.ok`.
 - `startSync()` runs once and registers: `online`/`offline` events, `visibilitychange` (when visible), `setInterval(check, 15000)`, and an immediate check. It also calls `finishWipe()` to retry a wipe left from a previous run.
 
@@ -486,7 +479,7 @@ export interface Backend {
   fetchChanges?(from: Cursors): Promise<Snapshot>
   pushBatch(items: OutboxItem[]): Promise<PushResult[]>
   heartbeat?(info: { deviceId: string; counter: string | null; pending: number; appVersion: string }): Promise<void>
-  /** The counters table (gates and dinner counters, active or retired). Demo mode has none: the built-in list applies. */
+  /** The counters table (the gate desks, active or retired). Demo mode has none: the built-in list applies. */
   listCounters?(): Promise<Counter[]>
   ping(): Promise<boolean>
   listUsers(): Promise<AdminUser[]>
@@ -589,7 +582,7 @@ sequenceDiagram
 
 ### 12.2 [`config.ts`](../src/lib/config.ts)
 
-`LIVE = !!SUPABASE_URL && !!SUPABASE_KEY && VITE_DEMO !== 'true'`; `DEMO = !LIVE`. Also `APP_VERSION` (from the Vite `define`), `UNDO_WINDOW_S = 60`, batch-year bounds, `MAX_CHILDREN`, `BUILTIN_COUNTERS` (`GATE-1..2`, `DINNER-1..10`, each with a `kind` and `active`; the fallback until a phone has the server's list), `SCHOOLS`, and the reason lists for undo and correction. [`lib/counters.ts`](../src/lib/counters.ts) holds the live list in a persisted store: `sync.ts` copies the `counters` table every ten minutes through `backend.listCounters()`, `setCounters()` sorts gates before dinner counters and ignores a list with nothing active, so the picker is never left blank. `useCounters()` returns the full list, `activeCounters(list, kind)` filters to counters that can be picked today (retired ones stay in the list so old scans keep their name), and `counterLabel(code)` falls back to the code itself for unknown counters.
+`LIVE = !!SUPABASE_URL && !!SUPABASE_KEY && VITE_DEMO !== 'true'`; `DEMO = !LIVE`. Also `APP_VERSION` (from the Vite `define`), `UNDO_WINDOW_S = 60`, batch-year bounds, `MAX_CHILDREN`, `BUILTIN_COUNTERS` (`GATE-1..2`, each with a `kind` and `active`; the fallback until a phone has the server's list), `SCHOOLS`, and the reason lists for undo and correction. [`lib/counters.ts`](../src/lib/counters.ts) holds the live list in a persisted store: `sync.ts` copies the `counters` table every ten minutes through `backend.listCounters()`, `setCounters()` keeps only gate rows, sorts them in natural order and ignores a list with nothing active, so the picker is never left blank. `useCounters()` returns the full list, `activeCounters(list)` filters to counters that can be picked today (retired ones stay in the list so old scans keep their name), and `counterLabel(code)` falls back to the code itself for unknown counters.
 
 ### 12.3 [`undo.ts`](../src/lib/undo.ts)
 
@@ -634,7 +627,7 @@ Opening a sheet pushes a history entry. Pressing Back pops it and the `popstate`
 
 ### 12.5 Others
 
-- [`counter.ts`](../src/lib/counter.ts): `applyCounter(code)` sets `counter` and `mode` (`'entry'` for gate counters, else `'dinner'`) and records the choice under the account id; `savedCounter(actorId)` returns it only if the counter still exists in the live list and has not been retired.
+- [`counter.ts`](../src/lib/counter.ts): `applyCounter(code)` sets `counter` and records the choice under the account id; `savedCounter(actorId)` returns it only if the counter still exists in the live list and has not been retired.
 - [`format.ts`](../src/lib/format.ts): `fmtTime` (`Intl.DateTimeFormat('en-IN', ...)`), `ago`, `mmss`, `initials`, `roleLabel`, `firstName`, `mobileDigits`, `plural`, `parkingLabel`, `partyDesc`, and `vibrate(kind)` (`navigator.vibrate` patterns, wrapped in try/catch because iPhone lacks it).
 - `shortName` in `actions.ts`: "Rahul Teja" becomes "Rahul T.", and a name already ending in a period is left alone. This is the name written on every event.
 
@@ -645,7 +638,7 @@ Pure functions with no React or network; the admin Import screen and the templat
 - `FIELDS: Field[]` is the list of columns (`header`, `required`, `allowed`, `example`). The CSV template (`templateCsv()` = a UTF-8 BOM plus the headings), the on-screen checks and the PDF guide all derive from it, so a column is defined once.
 - `parseCsv(text)` is a small state machine over characters with a `quoted` flag: inside quotes a doubled `""` is a literal quote and line breaks are kept; outside quotes the separator ends a cell and `\n`, `\r` or `\r\n` ends a row. The separator is **detected** from the first line (whichever of `,` `;` tab splits it into the most cells), because Excel in some locales writes semicolons. A leading BOM is stripped.
 - `readFileText(file)` tries a **fatal** UTF-8 `TextDecoder` and falls back to `windows-1252` when it throws (older Excel).
-- `checkGuestFile(text): FileReport` maps headings through `squash()` (lowercase, letters and digits only), so `Batch year`, `batch_year` and `BATCH YEAR` match. It reports **file-level** errors (missing required headings, no rows, over `MAX_ROWS = 10000`), lists **ignored** columns, then validates every non-blank row into a `RowReport` (`line` is the spreadsheet row number, heading = 1): name length, an example/placeholder row, a 4-digit batch year within bounds, the mobile, school (accepts the full name or the short form via `schoolShort`), email shape, spouse and accommodation (`YES_NO_MAYBE` lookup tables accept `y`/`n`/`m`), children 0 to `MAX_CHILDREN`, parking (a lookup table of spellings such as `2 wheeler` or `bike`), and the dinner override 0 to 30. A row with errors gets `guest: null`; a clean row gets a typed `GuestRow`.
+- `checkGuestFile(text): FileReport` maps headings through `squash()` (lowercase, letters and digits only), so `Batch year`, `batch_year` and `BATCH YEAR` match. It reports **file-level** errors (missing required headings, no rows, over `MAX_ROWS = 10000`), lists **ignored** columns, then validates every non-blank row into a `RowReport` (`line` is the spreadsheet row number, heading = 1): name length, an example/placeholder row, a 4-digit batch year within bounds, the mobile, school (accepts the full name or the short form via `schoolShort`), email shape, spouse and accommodation (`YES_NO_MAYBE` lookup tables accept `y`/`n`/`m`), children 0 to `MAX_CHILDREN`, and parking (a lookup table of spellings such as `2 wheeler` or `bike`). A row with errors gets `guest: null`; a clean row gets a typed `GuestRow`.
 - `mobileProblem(raw)` catches what spreadsheets do to phone numbers: scientific notation (`9.87654321e9` means Excel lost digits), a trailing `.0`, and accepts `10` digits, a leading `0` (11), `91` (12) or `0091` (14), always returning the **last 10** digits.
 - Duplicate mobiles inside the file produce a **warning** on the second row, not an error: both are kept and the server flags the second.
 - `toCsv` / `csvCell` write CSV. A cell that starts with `=`, `@`, tab or CR, or with `+`/`-` followed by something that is not a plain number, gets a leading apostrophe, which stops spreadsheet **formula injection** from a name or email that begins with `=`.
@@ -657,48 +650,42 @@ The check mirrors the server's validation so every problem is shown before anyth
 
 ### 13.1 [`components/ui.tsx`](../src/components/ui.tsx): primitives
 
-Presentational components over the design-system classes in `gh.css`: `Icon` (references `#i-<name>` in the SVG sprite rendered once by `Sprite`; the sprite is a generated string in `sprite.ts`), `Logo`, `ParkingChip` (the parking choice shown the same way everywhere: nothing for `'none'`, otherwise a 2-wheeler or 4-wheeler chip), `Chip`, `Btn`, `Seg` (segmented control), `Stepper`, `Switch`, `SyncPill`, `Banner`, `Sheet`, `Alert`, `ActionSheet`, `Toast`, `PartyCounter`, `ResultHead`, `Group`, `Kv`, `Empty`, `NavBar`.
+Presentational components over the design-system classes in `gh.css`: `Icon` (references `#i-<name>` in the SVG sprite rendered once by `Sprite`; the sprite is a generated string in `sprite.ts`), `Logo`, `ParkingChip` (the parking choice shown the same way everywhere: nothing for `'none'`, otherwise a 2-wheeler or 4-wheeler chip), `Chip`, `Btn`, `Seg` (segmented control), `Stepper`, `Switch`, `SyncPill`, `Banner`, `Sheet`, `Alert`, `ActionSheet`, `Toast`, `ResultHead`, `Group`, `Kv`, `Empty`, `NavBar`.
 
 - `Overlay` is `createPortal(children, document.querySelector('.app') ?? document.body)`. Sheets, alerts and toasts render at the app root so a fixed-position screen (the camera) cannot trap them under the tab bar.
 - `Sheet` calls `useLayer(onClose)`; with a `footer` prop the body scrolls while the footer stays pinned.
 - `SyncPill` is a small state machine: offline (shows the pending count), failed (any outbox item has `lastError`), syncing (`syncing || pending`), otherwise online.
-- `Stepper` clamps with `disabled` on the buttons at `min`/`max`; `PartyCounter` draws one `<i>` per meal with classes `done` / `now`.
+- `Stepper` clamps with `disabled` on the buttons at `min`/`max`.
 - [`Wheel`](../src/components/Wheel.tsx) is a scroll-snap picker: on scroll it waits 90 ms (`setTimeout`, cleared on each event), rounds `scrollTop / ROW` to an index and reports it.
 - [`Qr`](../src/components/Qr.tsx) (props `text`, `size`, `label`) renders the QR as one SVG `<path>` (a `M x y h1v1h-1z` square per dark module from `QRCode.create(text, { errorCorrectionLevel: 'M' })`), so it needs no canvas and works offline.
 
 ### 13.2 [`components/ResultFlow.tsx`](../src/components/ResultFlow.tsx)
 
-One sheet instance handles every scan outcome; changing state does not remount it (no re-animation, no extra history entry). It selects a `Kind` from the flow, the scanner mode and the party state:
+One sheet instance handles every scan outcome; changing state does not remount it (no re-animation, no extra history entry). It selects a `Kind` from the flow and the party state (there is only one mode, check-in):
 
 ```tsx
 let kind: Kind | null = null
 if (flow.kind === 'unrec') kind = 'unrec'
 else if (flow.kind === 'notfound' || view === null) kind = 'notfound'
 else if (view) {
-  const s = view.state
-  if (done) kind = 'done'
-  else if (mode === 'entry') kind = s.entered ? 'entryDone' : 'entry'
-  else if (!s.entered) kind = 'nocheck'
-  else if (s.remaining <= 0) kind = s.overServed ? 'flagged' : 'served'
-  else kind = 'valid'
+  kind = view.state.entered ? 'entryDone' : 'entry'
 }
 ```
 
 - `Flow` is a union: `{ kind: 'guest', partyId, method }`, `{ kind: 'unrec' }` (not a Homecoming QR), `{ kind: 'notfound', code? }`.
 - `view === null` (party id not in IndexedDB) maps to `notfound`; `view === undefined` (still loading) renders nothing.
 - A `BUZZ` table maps kinds to `vibrate('ok' | 'warn' | 'bad')`, fired from an effect keyed on `kind`.
-- Local state: `userN` (serve quantity override), `entryN` (headcount override), `done` (the event just written), `undo` (show the undo sheet), `busy` (blocks double taps).
-- The serve quantity is derived, not stored: `n = Math.min(userN ?? state.remaining, state.remaining)`, so it re-clamps if `remaining` changes underneath (a sync arrives).
-- `doServe` calls `serveDinner`, then sets `ui.last` (`eventId`, `partyId`, title, sub-line, `until = event.clientAt + UNDO_WINDOW_S * 1000`) which drives the toast, then `setDone` which moves the sheet to the `done` state. `doCheckIn` calls `checkIn`; only in entry mode does it set `ui.last` ("Welcome back, ...") and close the sheet. From the dinner-mode "Check in now" button it just writes the event and the sheet shows the valid state again.
-- Undo availability on the `done` state: `hasRole(session, 'staff') || undoSecondsLeft(done.event, now) > 0` (`undoSecondsLeft` is 0 once the 60 s window is over, or if the phone's clock was set back past the scan). Pressing Undo swaps the sheet for `UndoSheet`.
+- Local state: `entryN` (headcount override) and `busy` (blocks double taps).
+- `doCheckIn` calls `checkIn`, then sets `ui.last` (`eventId`, `partyId`, title "Welcome back, ...", sub-line, `until = event.clientAt + UNDO_WINDOW_S * 1000`) which drives the toast, and closes the sheet.
+- Already checked in (`entryDone`) shows when, where and by whom, read from the earliest live entry event, and has no action but "Scan next". Undo lives on the toast and in Activity.
 - Navigation out of the sheet always goes through `leaveLayers`.
 
 ### 13.3 Other components
 
-- [`UndoSheet`](../src/components/UndoSheet.tsx): props `event`, `who`, `detail`, `onClose`, `onUndone`. A required reason from `REASONS_UNDO` plus an optional note (max 140 chars), joined as `reason + ': ' + note`, then `voidEvent`. The wording follows the event: "Undo this serve?" for dinner, "Undo this check-in?" for entry. ResultFlow, ActionToast and Activity all open it.
-- [`CorrectionSheet`](../src/components/CorrectionSheet.tsx): staff only. Chooses `['dinner']`, `['entry']` or both (the "also reset dinner" switch appears only when resetting entry and dinner has servings), requires a reason from `REASONS_CORRECT`, calls `resetCheckpoints`.
-- [`ActionToast`](../src/components/ActionToast.tsx): takes a `hidden` prop (Scan and Search hide it while a sheet is open). It reads `ui.last`, counts down to `until` (0 if the phone's clock went back past the scan), hides itself 4 s after expiry, and when Undo is pressed loads the event from Dexie and shows `UndoSheet` itself, taking the name and "x of y served" from `usePartyView(last.partyId)`. `onUndone` clears `ui.last`.
-- [`AccountSheet`](../src/components/AccountSheet.tsx): counter picker (`CounterPicker`, also used by Setup, lists `activeCounters(useCounters(), 'gate')` and `'dinner'`, so a retired counter cannot be chosen), sync info, theme, role-gated admin links, demo tools in demo mode, and the sign-out alert. The alert's wording and buttons depend on `status.pending`: with unsynced items, "Sign out anyway" is the only destructive path (this is the "never wipe unsynced data silently" rule).
+- [`UndoSheet`](../src/components/UndoSheet.tsx): props `event`, `who`, `detail`, `onClose`, `onUndone`. A required reason from `REASONS_UNDO` plus an optional note (max 140 chars), joined as `reason + ': ' + note`, then `voidEvent`. ResultFlow no longer opens it; ActionToast and Activity do.
+- [`CorrectionSheet`](../src/components/CorrectionSheet.tsx): staff only. Requires a reason from `REASONS_CORRECT` and calls `resetEntry`; the button is disabled when the party is not checked in.
+- [`ActionToast`](../src/components/ActionToast.tsx): takes a `hidden` prop (Scan and Search hide it while a sheet is open). It reads `ui.last`, counts down to `until` (0 if the phone's clock went back past the scan), hides itself 4 s after expiry, and when Undo is pressed loads the event from Dexie and shows `UndoSheet` itself, taking the name and "Party of n" from `usePartyView(last.partyId)`. `onUndone` clears `ui.last`.
+- [`AccountSheet`](../src/components/AccountSheet.tsx): counter picker (`CounterPicker`, also used by Setup, lists `activeCounters(useCounters())`, so a retired gate cannot be chosen), sync info, theme, role-gated admin links, demo tools in demo mode, and the sign-out alert. The alert's wording and buttons depend on `status.pending`: with unsynced items, "Sign out anyway" is the only destructive path (this is the "never wipe unsynced data silently" rule).
 - [`layout.tsx`](../src/components/layout.tsx): `TopRow` (counter chip and sync pill), `Banners` (session expired; "Reload this page" when `ui.dbUpdated` is set because another tab upgraded the local database; update available only when `pending === 0`), `Screen` (wrapper), `TabBar` (Stats tab only when `hasRole(..., 'staff')`; `/guest/*` highlights the Search tab).
 
 ## 14. Screens
@@ -738,11 +725,11 @@ const lookup = useCallback(async (text: string) => {
 
 ### 14.2 Setup: [`Setup.tsx`](../src/screens/Setup.tsx)
 
-A small step machine: `'home' | 'download' | 'paused' | 'nolist' | 'ready'`. The initial step is `ready` if `rosterAt` exists, `home` if not installed (neither `display-mode: standalone` nor `navigator.standalone`) and not dismissed, else `download`. A `started` ref ensures the download effect fires once. On failure, `paused` if some rows had arrived, `nolist` if none. `beforeinstallprompt` is captured at module load into `deferredInstall` so the Install button can call `prompt()`. `ReadyStep` auto-applies a remembered counter (`savedCounter`, which returns it only while that counter is still active) in an effect and renders nothing in that case; otherwise it shows the picker and, when a counter is chosen, "Start scanning" calls `applyCounter`, which sets `counter` and flips `App` to `Shell`.
+A small step machine: `'download' | 'paused' | 'nolist' | 'ready'`. The initial step is `ready` if `rosterAt` exists, else `download`. A `started` ref ensures the download effect fires once. On failure, `paused` if some rows had arrived, `nolist` if none. `ReadyStep` auto-applies a remembered counter (`savedCounter`, which returns it only while that counter is still active) in an effect and renders nothing in that case; otherwise it shows the picker and, when a counter is chosen, "Start scanning" calls `applyCounter`, which sets `counter` and flips `App` to `Shell`.
 
 ### 14.3 Search: [`Search.tsx`](../src/screens/Search.tsx)
 
-A `useMemo` over the roster: `needle = q.trim().toLowerCase()`, `code = needle.replace(/[^a-z0-9]/g, '')`; a party matches if `nameLc.includes(needle)` or (when `code.length >= 4`) its pass code with the dash removed contains `code`. Then batch filter, then `!entered` / `remaining > 0` filters, then sorted by `nameLc`, capped at 60 rows. `rowChip(mode, state)` picks the status chip. Tapping a row opens the same `ResultFlow` with `method: 'search'`.
+A `useMemo` over the roster: `needle = q.trim().toLowerCase()`, `code = needle.replace(/[^a-z0-9]/g, '')`; a party matches if `nameLc.includes(needle)` or (when `code.length >= 4`) its pass code with the dash removed contains `code`. Then batch filter, then the `!entered` filter, then sorted by `nameLc`, capped at 60 rows. `rowChip(state)` picks the status chip (Checked in or Not arrived). Tapping a row opens the same `ResultFlow` with `method: 'search'`.
 
 ### 14.4 Register: [`Register.tsx`](../src/screens/Register.tsx)
 
@@ -754,15 +741,19 @@ A controlled form with a `validate(form): Errors` function (name at least 2 char
 
 ### 14.6 Stats and Review: [`Stats.tsx`](../src/screens/Stats.tsx), [`Review.tsx`](../src/screens/Review.tsx)
 
-[`Stats.tsx`](../src/screens/Stats.tsx) builds one `Row` per party (the party plus its derived state) from `useRoster()`, keeps the rows that match the Year and School filter (`matches`), and calls `computeStats(rows, roster.events)` in [`lib/stats.ts`](../src/lib/stats.ts). That module is pure and has its own tests. `computeStats` returns `expected`, `arrived`, `served`, `waiting` (`max(0, headcount - served)` over entered parties), `notArrived`, `review` (`needsReview`), `overrides`, per-year, per-school and year-by-school tallies, decades, parking, a people split (alumni, spouses, children) and `walkIns`. `pct()` never shows 100 until everyone is in and never 0 once anyone is, and `isSmall()` makes groups of one or two read "1 of 2" instead of a percentage.
+[`Stats.tsx`](../src/screens/Stats.tsx) builds one `Row` per party (the party plus its derived state) from `useRoster()`, keeps the rows that match the Year and School filter (`matches`), and calls `computeStats(rows)` in [`lib/stats.ts`](../src/lib/stats.ts). That module is pure and has its own tests. `computeStats` returns `expected`, `arrived`, `notArrived`, `review` (`needsReview`), per-year, per-school and year-by-school tallies, decades, parking, a people split (alumni, spouses, children) and `walkIns`. `pct()` never shows 100 until everyone is in and never 0 once anyone is, and `isSmall()` makes groups of one or two read "1 of 2" instead of a percentage.
 
-The screen has a sticky header with four tiles (On campus now, percent arrived, Meals served, Review, which opens `/stats/review`) that shrinks to a one-line strip once scrolled, and an alerts list (a quiet counter, failed syncs on this phone, parties needing review). The filter bar opens `FilterSheet` ([`StatsFilter.tsx`](../src/screens/StatsFilter.tsx): years by decade and schools, with a "Show N guests" button), and applying a filter shows a toast with Undo. A `Seg` switches between Entry, Dinner and Breakdown; the tab and filter live in the small `view` store so going to Review and back keeps them. Entry shows the donut, `arrivalSeries` (arrivals per 15 minutes), the people split, walk-ins and `gateRows`. Dinner shows `dinnerSeries` (meals per 30 minutes), overrides and `counterRows`: per-counter total and a rate over the last 10 minutes. A counter is Active if its last scan is under `ACTIVE_MS` (10 minutes) old, and Quiet if it has scans but none that recent. Breakdown shows batch year, school, the year-by-school grid, on campus by decade and school, and parking. The counter list comes from `useCounters()`; a retired counter appears only if it has scans. The chart pieces (`Card`, `Donut`, `Timeline`, `DinnerChart`, `StackBar`, `Legend`, `ProgressRow`, `Grid`, `Pair`, `SortToggle`) are in [`StatsCharts.tsx`](../src/screens/StatsCharts.tsx). Review lists parties with `needsReview`, labelled "n of m" (over-served), "No entry" or "Duplicate?", and opens `CorrectionSheet`.
+The screen has a sticky header with three tiles (On campus now, percent arrived, Review, which opens `/stats/review`) that shrinks to a one-line strip once scrolled, and an alerts list (failed syncs on this phone, parties needing review). The filter bar opens `FilterSheet` ([`StatsFilter.tsx`](../src/screens/StatsFilter.tsx): years by decade and schools, with a "Show N guests" button), and applying a filter shows a toast with Undo. A `Seg` switches between Entry and Breakdown; the tab and filter live in the small `view` store so going to Review and back keeps them. Entry shows the donut, `arrivalSeries` (arrivals per 15 minutes), the people split, walk-ins and `gateRows`. Breakdown shows batch year, school, the year-by-school grid, on campus by decade and school, and parking. The counter list comes from `useCounters()`; a retired gate appears only if it has check-ins. The chart pieces (`Card`, `Donut`, `Timeline`, `StackBar`, `Legend`, `ProgressRow`, `Grid`, `Pair`, `SortToggle`) are in [`StatsCharts.tsx`](../src/screens/StatsCharts.tsx). Review lists parties with `needsReview`, labelled "Duplicate?", and opens `CorrectionSheet`.
 
 ### 14.7 Others
 
-- [`GuestDetail.tsx`](../src/screens/GuestDetail.tsx): `usePartyView(id)`; header chips (party, spouse Maybe, `ParkingChip`, last four mobile digits, On-spot, Needs review); an Entry summary (with a timeline only when there is more than one entry event) and a dinner timeline built from the sorted events; staff get a Correct record button.
+- [`GuestDetail.tsx`](../src/screens/GuestDetail.tsx): `usePartyView(id)`; header chips (party, spouse Maybe, `ParkingChip`, last four mobile digits, On-spot, Needs review); an Entry summary (with a timeline only when there is more than one entry event); staff get a Correct record button.
 - [`Import.tsx`](../src/screens/Import.tsx) (admin): `choose(file)` rejects files over `MAX_FILE_BYTES` (5 MB), reads the text and runs `checkGuestFile`, storing the `FileReport` in state. Derived values: `problems` (rows with errors), `warned`, `ready`, and `canImport` (no file errors, no problem rows, at least one ready row). `run()` sends `file.report.rows.map((r) => r.guest!)` to `backend.importGuests(rows, { filename, replace })`, shows the result (`imported`, `flagged`, `retired`) and calls `checkOnline()` so this phone pulls the new guests immediately. "Replace" requires an extra confirmation sheet. `exportPasses` calls `backend.exportPasses()` and downloads `passListCsv(...)`. `Page` is exported from `Admin.tsx` and shared by both admin screens.
-- [`Admin.tsx`](../src/screens/Admin.tsx): `UsersScreen` lists via `backend.listUsers()`, splitting active people from "Removed or switched off" ones, and edits via a sheet calling `saveUser`. **Remove from the list** (hidden on your own row) just saves the person with `active: false`: scans and audit rows point at them, so the row is never deleted. The server's last-admin guard is the real protection; `AuditScreen` lists **void events from the local roster** (the server `audit_feed` is not connected yet).
+- [`Admin.tsx`](../src/screens/Admin.tsx): `UsersScreen` lists via `backend.listUsers()`, splitting active people from "Removed or switched off" ones, and edits via a sheet calling `saveUser`. **Remove from the list** (hidden on your own row) just saves the person with `active: false`: scans and audit rows point at them, so the row is never deleted. The server's last-admin guard is the real protection.
+- [`Audit.tsx`](../src/screens/Audit.tsx) (admin): `backend.auditFeed(cursor)` returns 100 classified entries (`AuditEntry`: `kind`, `subject`, `reason`, `n`, small `extra`), newest first; "Show older" passes the last entry's `(atUs, key)`. [`lib/audit.ts`](../src/lib/audit.ts) `auditLine()` words each kind (tested in `audit.test.ts`). "Clear the audit log" asks for a reason and the typed sentence `clear audit log`, then calls `clearAuditLog`: the server moves a start marker, nothing is deleted.
+- [`Devices.tsx`](../src/screens/Devices.tsx) (admin): `backend.listDevices()` every 15 s; [`lib/devices.ts`](../src/lib/devices.ts) `deviceState()` decides online (reported within 90 s), unsent items, another app version and a clock more than two minutes off.
+- [`Counters.tsx`](../src/screens/Counters.tsx) (admin): a stepper for the number of gate desks, `backend.setGateCount(n)` then `setCounters()` on this phone.
+- Staff screens: [`ReviewSheet.tsx`](../src/components/ReviewSheet.tsx) (Stats, Review) shows the flagged guest and the one it may repeat, a required reason, and `actions.resolveReview()` (server call, then this phone's copy). `GuestDetail.tsx` has `ContactGroup`: `backend.getContact(id)` on tap, kept in component state only.
 - [`Privacy.tsx`](../src/screens/Privacy.tsx): static public page at `/privacy`, rendered before the sign-in check in `App`.
 
 ### 14.8 Styles
@@ -780,13 +771,13 @@ The screen has a sticky header with four tiles (On campus now, percent arrived, 
 - `navigateFallbackDenylist: [/\.pdf$/]` keeps the service worker from answering a request for `/guest-list-guide.pdf` with `index.html`.
 - `server: { host: true }` exposes the dev server on the LAN.
 
-[`vercel.json`](../vercel.json): a rewrite sending every path that is not `assets/`, `logos/`, `sw.js`, `workbox-*`, the manifest, or a file with an extension to `/index.html` (client-side routing), and `Cache-Control: no-cache` on `/sw.js` so phones check for a new worker.
+[`vercel.json`](../vercel.json): a rewrite sending every path that is not `assets/`, `logos/`, `sw.js`, `workbox-*`, the manifest, or a file with an extension to `/index.html` (client-side routing), and `Cache-Control: no-cache` on `/sw.js` so phones check for a new worker. Every response also carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` and `Permissions-Policy: camera=(self), microphone=(), geolocation=()`. There is deliberately no `Content-Security-Policy`: a wrong one would break Google sign-in or the Supabase calls.
 
 [`tsconfig.app.json`](../tsconfig.app.json): `target es2023`, `moduleResolution: bundler`, `allowImportingTsExtensions`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noUnusedLocals`, `noUnusedParameters`, `jsx: react-jsx`. `npm run build` is `tsc -b && vite build`, so type errors fail the build.
 
 ## 16. The database
 
-Eight migrations in [`supabase/migrations/`](../supabase/migrations), applied in filename order. [`setup_all.sql`](../supabase/setup_all.sql) is all of them plus fake seed data. Migration `…07` is covered in [16.7](#167-guest-import-07) and migration `…08` in [16.8](#168-undo-clock-rules-and-heartbeat-08).
+Eleven migrations in [`supabase/migrations/`](../supabase/migrations), applied in filename order. [`setup_all.sql`](../supabase/setup_all.sql) is all of them plus fake seed data. Migration `…07` is covered in [16.7](#167-guest-import-07) and migration `…08` in [16.8](#168-undo-clock-rules-and-heartbeat-08).
 
 ### 16.1 Schema (`…01`)
 
@@ -805,7 +796,7 @@ erDiagram
 - Enums: `app_role` (**order matters**: comparisons use it), `ynm`, `parking_type`, `party_source`, `event_action`. Extensions: `citext` (case-insensitive emails), `pgcrypto`.
 - Two sequences, `change_seq` (parties) and `event_seq` (events). They are the sync cursors.
 - `staff_users`: `email citext unique`, `role`, `active`, `auth_user_id uuid unique references auth.users` (filled by `whoami` at first login).
-- `checkpoints`: `entry` and `dinner` (`requires: 'entry'`, `counted: true`). `counters`: `code`, `label`, `kind` (`gate`, `dinner` or `desk`) and `active`, seeded `GATE-1..2` and `DINNER-1..10`. Phones read this table directly (not through `get_snapshot`) about every ten minutes and keep the copy in the `gh26.counterList` store ([`counters.ts`](../src/lib/counters.ts)); until the first read, and if the server's list has nothing active, the built-in list in `config.ts` applies. A retired counter (`active = false`) cannot be picked but keeps its name on old scans.
+- `checkpoints`: `entry` and `dinner` (`requires: 'entry'`, `counted: true`); the app only uses `entry`, and migration 9 makes the server refuse anything else. `counters`: `code`, `label`, `kind` (`gate`, `dinner` or `desk`) and `active`, seeded `GATE-1..2` and `DINNER-1..10` (migration 9 switches the dinner ones off). Phones read this table directly (not through `get_snapshot`) about every ten minutes and keep the copy in the `gh26.counterList` store ([`counters.ts`](../src/lib/counters.ts)); until the first read, and if the server's list has nothing active, the built-in list in `config.ts` applies. A retired counter (`active = false`) cannot be picked but keeps its name on old scans.
 - `parties`: `id uuid primary key` (client-generated for on-spot), unique `pass_code` and `qr_token`, and two **generated columns**:
   ```sql
   decade     int generated always as ((batch_year/10)*10) stored,
@@ -819,7 +810,7 @@ erDiagram
   ```
   plus `create unique index one_void_per_event on scan_events (voids_event_id) where action = 'void'` (a partial unique index: at most one void per event).
 - **Append-only**: `forbid_mutation()` raises `'scan_events is append-only'`, attached as a `before update or delete` row trigger.
-- `party_state` view (`security_invoker = true`, so it obeys the caller's RLS): CTEs `live` (passes with no void: a `not exists` anti-join), `entry` (`distinct on (party_id)` ordered by `client_at, received_at`), `entry_n` (count of live entries), `dinner` (`sum(qty)`, `max(client_at)`). It exposes the same flags as `partyState()`.
+- `party_state` view (`security_invoker = true`, so it obeys the caller's RLS): CTEs `live` (passes with no void: a `not exists` anti-join), `entry` (`distinct on (party_id)` ordered by `client_at, received_at`), `entry_n` (count of live entries). It exposes the same flags as `partyState()`. Migration 9 rebuilds it without the dinner CTE and columns, and with `entitled = party_size`.
 
 ### 16.2 Security (`…02`)
 
@@ -852,7 +843,7 @@ Every RPC is `SECURITY DEFINER` with a fixed `search_path` and identifies the ca
 
 Phones pull "everything after cursor N". If two transactions take sequence values 10 and 11 but 11 commits first, a phone can pull up to 11, move its cursor to 11, and **never see 10**. `push_batch` and `update_party` (migration `…04`) therefore take the same `pg_advisory_xact_lock(1)` first. Writers are serialised, so commit order equals sequence order and a cursor can never skip a row. The lock is released at transaction end.
 
-### 16.5 `_push_event` (final form in `…08`)
+### 16.5 `_push_event` (final form in `…09`; `…08` is the form the earlier app runs on)
 
 ```sql
 if exists (select 1 from scan_events where id = eid) then return '{"status":"duplicate"}'; end if;   -- idempotent
@@ -918,19 +909,60 @@ Migration `…08` is safe to run on its own on a project that has migrations 1 t
 
 The client is stricter than the server on purpose. `UNDO_WINDOW_S` in [`config.ts`](../src/lib/config.ts) is 60 seconds, so a volunteer's undo through the app is always inside the server's 120. [`undo.ts`](../src/lib/undo.ts) is described in 12.3: a scan from another phone stays closed in the app even though the server would accept it for 120 seconds.
 
+### 16.9 Check-in only (`…09`)
+
+Written for the refactor/checkin-only branch and applied at cutover, not before (see [`supabase/README.md`](../supabase/README.md)). Nothing is deleted.
+
+- `party_state` is dropped and rebuilt without the `dinner` CTE and the `served`, `last_served_at`, `over_served` and `served_without_entry` columns, and `entitled` is `party_size` (`entitled_override` stays in `parties`, unused). It is re-granted to `authenticated`.
+- `_push_event` gains one line after the duplicate check: any event whose `checkpoint` is not `entry` raises `Only check-ins are recorded`, so `push_batch` reports it as rejected. A void of an old dinner scan is refused too.
+- `counters` rows with `kind = 'dinner'` are set inactive. The `dinner` row in `checkpoints` stays, because old `scan_events` rows point at it.
+
+Migrations 1 to 8 work with both the earlier app and the check-in-only app. Migration 9 works only with the check-in-only app.
+
+### 16.10 Flush (`…10`)
+
+An admin-only way to put everyone back to "not arrived", for rehearsals. It only adds functions (`admin_flush_preview`, `admin_flush_checkins`), so it can be applied at any time.
+
+- `admin_flush_checkins(p_reason, p_remove_onspot)` calls `_require_role('admin')`, takes `pg_advisory_xact_lock(1)` (the `push_batch` lock), then inserts one `void` for every live `entry` pass: reason `'Flush: ' || reason`, method `staff`, one shared `client_at` (`now()`, so a flush is one group), actor the admin. Voids rather than deletes: phones pull only rows with a higher `seq`, so a delete would never reach them, and `scan_events` stays append-only.
+- With `p_remove_onspot`, on-spot parties get `deleted_at` (phones already hide those, as after a list Replace) and their `party_contacts` rows are deleted, so a later registration with the same mobile is not flagged as a duplicate of a removed guest. Booked guests are never touched.
+- It writes an `audit_log` row (`flush`, counts, reason) and sets `app.reason` so the parties and contacts audit triggers record why.
+- `admin_flush_preview()` returns `checkedIn`, `people`, `scans`, `onSpot` and the phones whose last heartbeat in the past six hours reported `pending_count > 0`.
+- There is no server guard against a phone that was offline: its old scans arrive after the flush and check guests in again. The screen warns about phones with unsent items (this phone's outbox must be empty) and the remedy is to flush again after that phone syncs. A guard on `client_at` was rejected because a phone with a slow clock would have genuine new scans refused.
+- Client: [`Flush.tsx`](../src/screens/Flush.tsx) (Account, Danger zone) shows the preview, an on-spot switch and a reason, then a sheet where the admin types `flush <n> check-ins` ([`flush.ts`](../src/lib/flush.ts) `phraseMatches`). `backend.flushPreview()` and `flushCheckins()` call the RPCs; a missing function (migration not applied) shows a plain message. `AuditScreen` collapses each flush's voids into one line with `splitFlushVoids`. Demo mode does the same locally in `demoBackend.ts`.
+
+### 16.11 Removing people (`…11`)
+
+- `_require_staff()` (replaced) now raises `Your account is switched off or removed` with the same SQLSTATE 42501 as before, so the earlier app, which only looks at the code, behaves as it did. `_require_role` still says `not authorised` for a role that is too low.
+- `_user_has_history(uid)` (private) is true when a scan, a guest (`created_by`/`updated_by`), a review resolution, a user they added, or an audit entry other than their own sign-in link names the person. `admin_list_users` adds `canDelete` (not you, no history).
+- `admin_delete_user(p_email)`: admin only; refuses yourself, an active person (switch them off first) and anyone with history. It sets `app.reason`, clears `actor_id` on the person's remaining audit entries (their own sign-in link), deletes their `device_status` rows and the `staff_users` row; the audit trigger records the deletion and the admin who did it. The Supabase Authentication record is left alone: without a staff row that account gets "not on the list".
+- Client: `authFailure()` ([`authError.ts`](../src/lib/authError.ts)) turns an RPC error into `'removed'`, `'expired'` or `null`; `fail()` in `supabase.ts` sets `prefs.accessRemoved` or `sessionExpired`. [`AccessRemoved.tsx`](../src/screens/AccessRemoved.tsx) replaces the app: it asks the local database for the unsent count (the live count reads 0 until its first query returns) and signs out by itself at 0, otherwise asks first. A successful `pull()` clears the flag. `EditUser` in `Admin.tsx` shows **Delete permanently** only for a switched-off person with `canDelete`.
+
+### 16.12 Review, gate desks, devices (`…12`)
+
+- `resolve_review(p_party_id, p_note)` (replaced, same signature and grant): staff; a note of 3+ characters; takes `pg_advisory_xact_lock(1)`, sets `app.reason` to `Not a duplicate: <note>`, clears `parties.possible_duplicate_of` (so the party trigger gives it a new `change_seq` and phones pull it) and writes a `review_resolutions` row. A guest that is not flagged is refused.
+- `admin_set_gate_count(p_count)`: admin; 1 to 20; adds missing `GATE-n` rows, sets `active = (n <= p_count)` on `kind = 'gate'` rows only, writes an audit row (`counters` has no trigger) and returns the gate list.
+- `admin_list_devices()`: admin; `device_status` joined to the person's name, newest first, at most 200.
+
+### 16.13 Audit feed (`…13`)
+
+- `event_settings.audit_since` is the start of the log; null means from the beginning. `admin_clear_audit_log(p_reason)` (admin, reason, refused when `is_live`) sets it to `now()` and writes an `event_settings`/`clear` audit row with the same timestamp. Nothing is deleted.
+- `audit_feed(p_limit, p_before_us, p_before_key)` (replaces the old one, which no app called) returns `{ since, entries }`. Entries are `audit_log` rows plus `scan_events` rows (check-in, undo, reset), each classified into a `kind` in SQL. It leaves out per-guest contact rows (reads stay), the `audit_since` update itself and the voids of a flush; collapses rows of one bulk change (same person, table, action, reason and transaction time, on `parties`) into one entry with a count, before paging; returns only the fields a line needs (no before/after rows, so no mobile numbers). Order and cursor: `(at, key)`, newest first, at most 200 per call.
+
 ## 17. Tests, scripts and CI
 
 **[`supabase/test/harness.sh`](../supabase/test/harness.sh)**: starts `postgres:16` in Docker, loads [`stub_auth.sql`](../supabase/test/stub_auth.sql) (a fake `auth.users`, an `auth.uid()` that reads `request.jwt.claim.sub`, the `anon`, `authenticated` and `supabase_auth_admin` roles, and default privileges that hand every new table and function to `anon` and `authenticated`, as hosted Supabase does), applies every migration and `seed_dev.sql`, runs [`checks.sql`](../supabase/test/checks.sql), and removes the container on exit (`trap`). `set -euo pipefail` plus `psql -v ON_ERROR_STOP=1` make any failure fatal.
 
-**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message) and `_ev(...)` (build a pass event item for `push_batch`). Each check runs **as a real role** against the real objects. 93 checks in total: 58 in the main block, 28 for the guest import (validation, replace refusals, duplicate flagging, 5,000 guests, audit and grant checks) and 7 for migration 8 (an offline undo from the same phone is accepted, an undo dated before its scan is refused, an undo from another phone is judged by the server's clock, and heartbeats cannot overwrite another user's row; the test sets `session_replication_role = replica` to age a `received_at`, since the log is append-only). They also check that signed-in users can execute exactly the 15 functions the app needs. They cover access by role, RLS, column and function grants, idempotent replays, servings from two devices adding, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
+**`checks.sql`** defines helpers: `_as(email)` (set the JWT subject and `set role authenticated`), `_back()`, `_try(sql)` (run a statement, return its error text or null), `_ok(cond, msg)` (raise unless true, print the message) and `_ev(...)` (build a pass event item for `push_batch`). Each check runs **as a real role** against the real objects. 185 checks in total (the 140 below plus about 45 for migrations 12 and 13: review, gate count, devices, feed contents, paging, collapsing, clear): 59 in the main block, 28 for the guest import (validation, replace refusals, duplicate flagging, 5,000 guests, audit and grant checks), 5 for migration 9 (no dinner columns, dinner scans and dinner-type voids refused, old dinner scans ignored, dinner counters off), 20 for migration 10 (flush: admin only, reason required, every live check-in voided, on-spot kept or removed, booked guests untouched, audit row, phones can read the voids) 21 for migration 11 (delete a person: admin only, must be switched off first, refused with any history, audit entries kept, switched-off accounts told so) and 7 for migration 8 (an offline undo from the same phone is accepted, an undo dated before its scan is refused, an undo from another phone is judged by the server's clock, and heartbeats cannot overwrite another user's row; the test sets `session_replication_role = replica` to age a `received_at`, since the log is append-only). They also check that signed-in users can execute exactly the 21 functions the app needs. They cover access by role, RLS, column and function grants, idempotent replays, a repeat check-in from a second device being flagged, dinner scans being refused, flags, every undo rule, on-spot registration and duplicate flagging, audit rows, the last-admin guard, append-only, no function open to `anon`, and the sign-up hook.
 
-**Vitest** (`npm test`, config in [`vitest.config.ts`](../vitest.config.ts), separate from `vite.config.ts` so tests load neither the PWA plugin nor git): files match `src/**/*.test.{ts,tsx}`, run in `node` by default, and a test that needs the DOM opts in with a `// @vitest-environment jsdom` docblock. IndexedDB tests use `fake-indexeddb/auto`. Eight files, 208 tests: `lib/stats.test.ts` (the stats maths), `screens/Stats.test.tsx`, `screens/StatsCharts.test.tsx`, `screens/StatsFilter.test.tsx`, `lib/undo.test.ts` (`undoStatus`, `undoSecondsLeft`), `lib/counters.test.ts`, `lib/db.test.ts` (reads and writes, an in-place upgrade from `STORES_V1` that must keep every row including unsynced outbox items, and the `ui.dbUpdated` flag when another tab upgrades the database) and `components/ParkingChip.test.tsx`. [`src/test/fixtures.ts`](../src/test/fixtures.ts) holds the shared builders: `party()`, `ev()`, `voidOf()`, `resetIds()`, `T0`, `MIN`, `rowsOf()` and `rosterOf()`.
+**Vitest** (`npm test`, config in [`vitest.config.ts`](../vitest.config.ts), separate from `vite.config.ts` so tests load neither the PWA plugin nor git): files match `src/**/*.test.{ts,tsx}`, run in `node` by default, and a test that needs the DOM opts in with a `// @vitest-environment jsdom` docblock. IndexedDB tests use `fake-indexeddb/auto`. Eleven files, 187 tests: `lib/stats.test.ts` (the stats maths), `lib/state.test.ts` (`partyState`), `lib/flush.test.ts` (the typed confirmation and grouping flush voids), `lib/authError.test.ts` (removed versus expired sign-in), `screens/Stats.test.tsx`, `screens/StatsCharts.test.tsx`, `screens/StatsFilter.test.tsx`, `lib/undo.test.ts` (`undoStatus`, `undoSecondsLeft`), `lib/counters.test.ts`, `lib/db.test.ts` (reads and writes, an in-place upgrade from `STORES_V1` that must keep every row including unsynced outbox items, and the `ui.dbUpdated` flag when another tab upgrades the database) and `components/ParkingChip.test.tsx`. [`src/test/fixtures.ts`](../src/test/fixtures.ts) holds the shared builders: `party()`, `ev()`, `voidOf()`, `resetIds()`, `T0`, `MIN`, `rowsOf()` and `rosterOf()`.
+
+**[`scripts/build_setup_all.sh`](../scripts/build_setup_all.sh)** concatenates the migrations and `seed_dev.sql` into `supabase/setup_all.sql`. `--check` fails when the committed file differs, so a new migration cannot be forgotten there.
 
 **[`scripts/make_guest_guide.py`](../scripts/make_guest_guide.py)** generates `public/guest-list-guide.pdf` (the printable column guide for organisers). Keep its column table in step with `FIELDS`.
 
 **[`scripts/test_passes.py`](../scripts/test_passes.py)**: ReportLab. `valid` reads a CSV (`pass_code, qr_token, lead_name, ...`), either a SQL-editor query result or the first twelve columns of the admin pass-list export (`passListCsv` in `guestImport.ts`), and draws four cards per A4 page, each with a QR of `'GH26:' + qr_token`. `invalid` draws QR codes that must be rejected (random `GH26:` tokens, a URL, a UPI payment string, plain text, a `GH25:` prefix). QR is drawn with `QrCodeWidget` scaled through a `Drawing` transform.
 
-**[CI](../.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `supabase/test/harness.sh`.
+**[CI](../.github/workflows/ci.yml)** (push to `main`, and pull requests): job `web` = `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (with placeholder `VITE_SUPABASE_*` so the production guard passes); job `database` = `scripts/build_setup_all.sh --check`, then `supabase/test/harness.sh`.
 
 ## 18. Conventions and syntax
 
@@ -952,7 +984,7 @@ npm install
 npm run dev          # http://localhost:5173
 npm run dev:phone    # HTTPS on the LAN so a real phone can use the camera
 npm run typecheck    # tsc -b
-npm test             # vitest, 8 files, 208 tests (src/**/*.test.ts[x])
+npm test             # vitest, 13 files, 198 tests (src/**/*.test.ts[x])
 npm run lint         # oxlint
 npm run build        # tsc -b && vite build, output in dist/
 supabase/test/harness.sh   # database checks, needs Docker

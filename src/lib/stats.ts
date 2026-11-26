@@ -1,5 +1,5 @@
-import { liveEvents, type PartyState } from './state.ts'
-import type { Party, ScanEvent } from './types.ts'
+import type { PartyState } from './state.ts'
+import type { Party } from './types.ts'
 
 /** Stats are computed on the phone from the roster, so they cover only what this phone has heard about. No backend call. */
 
@@ -67,11 +67,8 @@ export interface Stats {
   parties: number
   expected: number
   arrived: number
-  served: number
-  waiting: number
   notArrived: number
   review: number
-  overrides: number
   years: YearTally[]
   schools: SchoolTally[]
   cell: Map<string, Tally>
@@ -84,8 +81,8 @@ export interface Stats {
 
 export const cellKey = (year: number, school: string) => year + '|' + school
 
-export function computeStats(rows: Row[], events: ScanEvent[]): Stats {
-  let expected = 0, arrived = 0, served = 0, waiting = 0, review = 0, overrides = 0
+export function computeStats(rows: Row[]): Stats {
+  let expected = 0, arrived = 0, review = 0
   const years = new Map<number, Tally>()
   const schools = new Map<string, Tally>()
   const cell = new Map<string, Tally>()
@@ -100,8 +97,6 @@ export function computeStats(rows: Row[], events: ScanEvent[]): Stats {
     const here = st.entered ? (st.headcount ?? 0) : 0
     expected += exp
     arrived += here
-    served += st.served
-    if (st.entered) waiting += Math.max(0, here - st.served)
     if (st.needsReview) review++
     const k = schoolKey(p.school)
     tally(years, p.batchYear, exp, here)
@@ -131,20 +126,14 @@ export function computeStats(rows: Row[], events: ScanEvent[]): Stats {
     split.arr[1] += hs
     split.arr[2] += hc
   }
-  const ids = new Set(rows.map((r) => r.party.id))
-  // Passes that were undone don't count, same as every other number here.
-  for (const e of liveEvents(events)) if (e.checkpoint === 'dinner' && e.overrideReason && ids.has(e.partyId)) overrides++
 
   return {
     guests: expected,
     parties: rows.length,
     expected,
     arrived,
-    served,
-    waiting,
     notArrived: Math.max(0, expected - arrived),
     review,
-    overrides,
     years: [...years].map(([year, t]) => ({ year, ...t })).sort((a, b) => a.year - b.year),
     schools: [...schools].map(([key, t]) => ({ key, ...t })).sort((a, b) => b.exp - a.exp),
     cell,
@@ -173,7 +162,6 @@ export function filterOptions(parties: Party[], expectedOf: (id: string) => numb
 }
 
 export const MIN15 = 15 * 60000
-export const MIN30 = 30 * 60000
 const floorTo = (t: number, size: number) => Math.floor(t / size) * size
 
 export interface ArrivalBar {
@@ -227,72 +215,9 @@ export function arrivalSeries(rows: Row[], now: number, expected: number, arrive
   return { bars, peak: Math.max(...bars.filter((b) => b.kind !== 'proj').map((b) => b.n)), current: bars.find((b) => b.kind === 'now')?.n ?? 0, eta, done, slow }
 }
 
-export interface DinnerBar {
-  start: number
-  meals: number
-  /** Checked in and not yet served at the end of the slot. */
-  queue: number
-}
-
-/** Meals per 30 minutes and the queue at the end of each slot, on one people scale. */
-export function dinnerSeries(rows: Row[], live: ScanEvent[], now: number): { bars: DinnerBar[]; max: number } | null {
-  const ids = new Set(rows.map((r) => r.party.id))
-  const meals = live.filter((e) => e.checkpoint === 'dinner' && ids.has(e.partyId))
-  if (!meals.length) return null
-  const first = floorTo(Math.min(...meals.map((e) => e.clientAt)), MIN30)
-  const nowB = Math.max(floorTo(now, MIN30), floorTo(Math.max(...meals.map((e) => e.clientAt)), MIN30))
-  const start = Math.max(first, nowB - 7 * MIN30)
-  const entries = rows.filter((r) => r.st.entered && r.st.enteredAt != null).map((r) => [r.st.enteredAt as number, r.st.headcount ?? 0] as const)
-  const bars: DinnerBar[] = []
-  for (let b = start; b <= nowB; b += MIN30) {
-    const end = Math.min(b + MIN30, Math.max(now, b + 1))
-    let served = 0, perSlot = 0
-    for (const e of meals) {
-      if (e.clientAt < end) served += e.qty
-      if (e.clientAt >= b && e.clientAt < b + MIN30) perSlot += e.qty
-    }
-    let inn = 0
-    for (const [t, n] of entries) if (t < end) inn += n
-    bars.push({ start: b, meals: perSlot, queue: Math.max(0, inn - served) })
-  }
-  return { bars, max: Math.max(1, ...bars.map((b) => Math.max(b.meals, b.queue))) }
-}
-
-export interface CounterRow {
-  code: string
-  label: string
-  n: number
-  lastAt: number | null
-  actor: string
-  /** People per minute over the last 10 minutes. */
-  rate: number
-  active: boolean
-}
-
-export const ACTIVE_MS = 10 * 60000
-
 /** People counted at each gate. Only the entry that counts for a party (its earliest) is used, so a second scan of the same party at another gate doesn't make the gates add up to more than "arrived". */
 export function gateRows(counters: { code: string; label: string }[], rows: Row[]) {
   const per = new Map<string, number>()
   for (const { st } of rows) if (st.entered && st.enteredCounter) per.set(st.enteredCounter, (per.get(st.enteredCounter) ?? 0) + (st.headcount ?? 0))
   return counters.map((c) => ({ code: c.code, label: c.label, n: per.get(c.code) ?? 0 }))
-}
-
-export function counterRows(counters: { code: string; label: string }[], live: ScanEvent[], checkpoint: 'entry' | 'dinner', now: number): CounterRow[] {
-  const per = new Map<string, { n: number; at: number; actor: string; recent: number }>()
-  for (const e of live) {
-    if (e.checkpoint !== checkpoint) continue
-    const c = per.get(e.counter) ?? { n: 0, at: 0, actor: e.actorName, recent: 0 }
-    c.n += e.qty
-    if (e.clientAt >= c.at) {
-      c.at = e.clientAt
-      c.actor = e.actorName
-    }
-    if (now - e.clientAt < ACTIVE_MS) c.recent += e.qty
-    per.set(e.counter, c)
-  }
-  return counters.map((c) => {
-    const d = per.get(c.code)
-    return { code: c.code, label: c.label, n: d?.n ?? 0, lastAt: d?.at ?? null, actor: d?.actor ?? '', rate: d ? d.recent / 10 : 0, active: !!d && now - d.at < ACTIVE_MS }
-  })
 }

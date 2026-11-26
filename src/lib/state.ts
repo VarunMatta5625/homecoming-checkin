@@ -2,17 +2,13 @@ import type { Party, ScanEvent } from './types.ts'
 
 export interface PartyState {
   partyId: string
+  /** People on the pass: the most the gate can check in. */
   entitled: number
   entered: boolean
   enteredAt: number | null
   headcount: number | null
   enteredCounter: string | null
   enteredBy: string | null
-  served: number
-  remaining: number
-  lastServedAt: number | null
-  overServed: boolean
-  servedWithoutEntry: boolean
   duplicateEntry: boolean
   possibleDuplicate: boolean
   needsReview: boolean
@@ -20,49 +16,34 @@ export interface PartyState {
 
 /**
  * Derived state, never stored (invariant 5). Mirrors the SQL view party_state:
- * live = 'pass' events not voided; earliest entry wins; dinner servings add up.
+ * live = 'entry' passes not voided; earliest entry wins. Events from another checkpoint (the shared database may still
+ * hold old dinner scans) are ignored.
  */
 export function partyState(party: Party, events: ScanEvent[]): PartyState {
-  const voided = new Set<string>()
-  for (const e of events) if (e.action === 'void' && e.voidsEventId) voided.add(e.voidsEventId)
-  const live = events.filter((e) => e.action === 'pass' && !voided.has(e.id))
-
-  const entries = live
-    .filter((e) => e.checkpoint === 'entry')
+  const entries = liveEvents(events)
     .sort((a, b) => a.clientAt - b.clientAt || (a.receivedAt ?? Infinity) - (b.receivedAt ?? Infinity))
   const first = entries[0]
-  const dinners = live.filter((e) => e.checkpoint === 'dinner')
-  const served = dinners.reduce((n, e) => n + e.qty, 0)
-  const entitled = party.entitledOverride ?? party.partySize
-
-  const entered = !!first
-  const overServed = served > entitled
-  const servedWithoutEntry = served > 0 && !entered
   const possibleDuplicate = party.possibleDuplicateOf !== null
+  const duplicateEntry = entries.length > 1
   return {
     partyId: party.id,
-    entitled,
-    entered,
+    entitled: party.partySize,
+    entered: !!first,
     enteredAt: first?.clientAt ?? null,
     headcount: first?.qty ?? null,
     enteredCounter: first?.counter ?? null,
     enteredBy: first?.actorName ?? null,
-    served,
-    remaining: Math.max(0, entitled - served),
-    lastServedAt: dinners.length ? Math.max(...dinners.map((e) => e.clientAt)) : null,
-    overServed,
-    servedWithoutEntry,
-    duplicateEntry: entries.length > 1,
+    duplicateEntry,
     possibleDuplicate,
-    needsReview: overServed || servedWithoutEntry || possibleDuplicate,
+    needsReview: possibleDuplicate,
   }
 }
 
-/** Events that count: passes that have not been voided. */
+/** Check-ins that count: entry passes that have not been voided. */
 export function liveEvents(events: ScanEvent[]): ScanEvent[] {
   const voided = new Set<string>()
   for (const e of events) if (e.action === 'void' && e.voidsEventId) voided.add(e.voidsEventId)
-  return events.filter((e) => e.action === 'pass' && !voided.has(e.id))
+  return events.filter((e) => e.action === 'pass' && e.checkpoint === 'entry' && !voided.has(e.id))
 }
 
 export function groupByParty(events: ScanEvent[]): Map<string, ScanEvent[]> {

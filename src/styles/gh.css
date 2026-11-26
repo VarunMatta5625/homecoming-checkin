@@ -15,7 +15,6 @@
 .navbtn{min-height:44px;min-width:44px;display:inline-flex;align-items:center;gap:4px;color:var(--tint);font-size:17px;padding:0 8px}
 
 /* type */
-.t-large{font-size:34px;line-height:41px;font-weight:700}
 .t-title{font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.26px}
 .t-head{font-size:17px;line-height:22px;font-weight:600}
 .t-body{font-size:17px;line-height:22px}
@@ -28,7 +27,6 @@
 /* icons */
 .i{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .i.s{width:16px;height:16px}.i.m{width:20px;height:20px}.i.l{width:28px;height:28px}.i.xl{width:40px;height:40px;stroke-width:2.2}
-.i.thin{stroke-width:1.6}
 
 /* tab bar */
 .tabbar{position:absolute;left:0;right:0;bottom:0;height:90px;padding:6px 4px 34px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);background:var(--bar);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:.5px solid var(--sep);z-index:5}
@@ -38,7 +36,7 @@
 /* buttons */
 .btn{height:50px;min-width:44px;border-radius:14px;padding:0 20px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:17px;font-weight:600;width:100%;white-space:nowrap}
 .btn.primary{background:var(--btn);color:var(--on-btn)}
-.btn.primary.pressed,.btn.primary:active{background:var(--btn-press)}
+.btn.primary:active{background:var(--btn-press)}
 .btn.secondary{background:var(--tint-bg);color:var(--tint)}
 .btn.plain{background:transparent;color:var(--tint)}
 .btn.gray{background:var(--fill);color:var(--text)}
@@ -121,12 +119,6 @@
 .gmeta{font-size:17px;line-height:22px;color:var(--text2)}
 
 /* party counter */
-.pc{display:flex;gap:6px}
-.pc i{flex:1;height:10px;border-radius:5px;background:var(--fill)}
-.pc i.done{background:var(--text2)}
-.pc i.now{background:var(--tint)}
-.pc-label{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;line-height:20px}
-.pc-label b{font-size:17px}
 
 /* key/values */
 .kv{display:flex;justify-content:space-between;gap:12px;font-size:17px;line-height:22px;padding:11px 16px;background:var(--card)}
@@ -154,7 +146,6 @@
 
 /* misc */
 .card{background:var(--card);border-radius:14px}
-.hr{height:.5px;background:var(--sep)}
 .qr{background:#fff;border-radius:18px;padding:18px}
 .qr svg{display:block;width:100%;height:100%}
 .qr path{fill:#111}
@@ -190,12 +181,9 @@
 .tl-i .dotc{width:28px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none;position:relative;z-index:1}
 .tl-i:not(:last-child)::before{content:"";position:absolute;left:29.5px;top:38px;bottom:-10px;width:1px;background:var(--sep)}
 .tl-i .tx{display:flex;flex-direction:column;gap:1px;min-width:0}
-.hap{display:flex;gap:6px;align-items:center;height:24px}
-.hap i{height:14px;border-radius:7px;background:var(--text)}
-.hap i.s{width:14px}.hap i.l{width:56px}
 /* Dynamic Type ~130% */
 .xl .t-body,.xl .cell,.xl .kv,.xl .gmeta{font-size:22px;line-height:28px}
-.xl .t-sub,.xl .rrow .meta,.xl .rsub,.xl .pc-label{font-size:20px;line-height:25px}
+.xl .t-sub,.xl .rrow .meta,.xl .rsub{font-size:20px;line-height:25px}
 .xl .t-cap,.xl .gh-h,.xl .gh-f,.xl .chip,.xl .pill{font-size:17px;line-height:22px}
 .xl .t-head,.xl .rrow .nm,.xl .btn{font-size:22px;line-height:28px}
 .xl .rlabel,.xl .t-title{font-size:28px;line-height:34px}

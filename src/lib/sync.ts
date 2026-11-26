@@ -75,6 +75,8 @@ async function pull() {
       })
     }
     if (snap.cursors) prefs.set({ partyCursor: snap.cursors.party, eventCursor: snap.cursors.event, lastSyncAt: Date.now() })
+    // The server answered: this account works again (an admin switched it back on).
+    if (prefs.get().accessRemoved) prefs.set({ accessRemoved: false })
   } catch {
     /* offline or session ended */
   } finally {
@@ -82,11 +84,12 @@ async function pull() {
   }
 }
 
+/** Reports items still waiting to be sent. Ones the server refused will never be sent, so they are not counted (an admin's flush looks at this number). */
 async function heartbeat() {
   const p = prefs.get()
   if (!backend.heartbeat || !p.session || p.wipePending) return
   try {
-    await backend.heartbeat({ deviceId: p.deviceId, counter: p.counter, pending: await db.outbox.count(), appVersion: APP_VERSION })
+    await backend.heartbeat({ deviceId: p.deviceId, counter: p.counter, pending: await db.outbox.filter((i) => !i.lastError).count(), appVersion: APP_VERSION })
   } catch {
     /* best effort */
   }

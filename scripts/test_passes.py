@@ -81,11 +81,10 @@ def valid(rows, out):
             ('Members', party_desc(spouse, kids)),
             ('Parking', (r['parking'] or 'none').replace('_', ' ')),
             ('Mobile', 'ends ' + (r['mobile_last4'] or '----')),
-            ('Dinner left', '%d of %d (fresh pass)' % (size_, size_)),
         ]
         lines_block(c, x, y + CH - 22 - size - 62, rows_)
         c.setFillColorRGB(.5,.5,.5); c.setFont('Helvetica', 7.5)
-        c.drawCentredString(x + CW/2, y + 14, 'TEST DATA - expect: Valid entry, then dinner')
+        c.drawCentredString(x + CW/2, y + 14, 'TEST DATA - expect: Valid entry')
     c.save()
 
 def invalid(out):

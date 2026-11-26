@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { SUPABASE_KEY, SUPABASE_URL, type Counter } from '../lib/config.ts'
+import { authFailure } from '../lib/authError.ts'
 import { prefs } from '../lib/prefs.ts'
-import type { OutboxItem, Party, PushResult, ScanEvent, Session } from '../lib/types.ts'
+import type { OutboxItem, Party, PartyContact, PushResult, ScanEvent, Session } from '../lib/types.ts'
 import type { GuestRow, PassRow } from '../lib/guestImport.ts'
-import type { AdminUser, Backend, Cursors, ImportResult, SignInResult, Snapshot } from './types.ts'
+import type { AdminUser, AuditCursor, AuditPage, Backend, Cursors, DeviceRow, FlushPreview, FlushResult, ImportResult, SignInResult, Snapshot } from './types.ts'
 
 const PAGE = 1000
 
@@ -46,7 +47,6 @@ const toParty = (r: Row): Party => ({
   spouse: r.spouse,
   children: r.children,
   partySize: r.party_size,
-  entitledOverride: r.entitled_override,
   parking: r.parking,
   possibleDuplicateOf: r.possible_duplicate_of,
   deletedAt: r.deleted_at,
@@ -73,11 +73,20 @@ const toEvent = (r: Row): ScanEvent => ({
 
 /** Turns an RPC error into a thrown Error. An auth failure also flags the session as expired. */
 function fail(error: { message: string; code?: string; status?: number }): never {
-  if (error.code === '42501' || error.code === 'PGRST301' || error.status === 401 || error.status === 403) {
-    if (prefs.get().session) prefs.set({ sessionExpired: true })
-  }
+  const why = authFailure(error)
+  if (why && prefs.get().session) prefs.set(why === 'removed' ? { accessRemoved: true } : { sessionExpired: true })
   throw new Error(error.message)
 }
+
+/** A function that isn't there means that migration hasn't been applied to this project yet. */
+function migrationFail(error: { message: string; code?: string; status?: number }, migration: number, what: string): never {
+  if (error.code === 'PGRST202' || /could not find the function/i.test(error.message)) {
+    throw new Error('The database needs its latest update (migration ' + migration + ') before it can ' + what + '.')
+  }
+  return fail(error)
+}
+
+const toCounter = (r: Row): Counter => ({ code: String(r.code), label: String(r.label), kind: r.kind as Counter['kind'], active: r.active !== false })
 
 async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Promise<Snapshot> {
   const parties: Party[] = []
@@ -88,7 +97,8 @@ async function fetchPages(from: Cursors, onPage?: (parties: number) => void): Pr
     if (error) fail(error)
     const d = data as { parties: Row[]; events: Row[]; party_cursor: number; event_cursor: number; more: boolean }
     parties.push(...d.parties.map(toParty))
-    events.push(...d.events.map(toEvent))
+    // The shared database may still hold dinner scans from the earlier version of the app. This app only knows entry.
+    events.push(...d.events.filter((r) => r.checkpoint === 'entry').map(toEvent))
     cur.party = d.party_cursor
     cur.event = d.event_cursor
     onPage?.(parties.length)
@@ -160,7 +170,7 @@ export const supabaseBackend: Backend = {
   async listCounters() {
     const { data, error } = await sb().from('counters').select('code,label,kind,active')
     if (error) fail(error)
-    return (data as Row[]).map((r): Counter => ({ code: String(r.code), label: String(r.label), kind: r.kind as Counter['kind'], active: r.active !== false }))
+    return (data as Row[]).map(toCounter)
   },
 
   async ping() {
@@ -184,6 +194,11 @@ export const supabaseBackend: Backend = {
     if (error) fail(error)
   },
 
+  async deleteUser(email) {
+    const { error } = await sb().rpc('admin_delete_user', { p_email: email })
+    if (error) migrationFail(error, 11, 'delete people')
+  },
+
   async importGuests(rows: GuestRow[], opts) {
     const { data, error } = await sb().rpc('admin_import_guests', { p_filename: opts.filename, p_rows: rows, p_replace: opts.replace })
     if (error) fail(error)
@@ -194,5 +209,55 @@ export const supabaseBackend: Backend = {
     const { data, error } = await sb().rpc('admin_export_passes')
     if (error) fail(error)
     return data as PassRow[]
+  },
+
+  async flushPreview() {
+    const { data, error } = await sb().rpc('admin_flush_preview')
+    if (error) migrationFail(error, 10, 'flush check-ins')
+    return data as FlushPreview
+  },
+
+  async flushCheckins(opts) {
+    const { data, error } = await sb().rpc('admin_flush_checkins', { p_reason: opts.reason, p_remove_onspot: opts.removeOnSpot })
+    if (error) migrationFail(error, 10, 'flush check-ins')
+    return data as FlushResult
+  },
+
+  async resolveReview(partyId, note) {
+    const { error } = await sb().rpc('resolve_review', { p_party_id: partyId, p_note: note })
+    if (error) migrationFail(error, 12, 'clear duplicate flags')
+  },
+
+  async getContact(partyId) {
+    const { data, error } = await sb().rpc('get_party_contact', { p_party_id: partyId })
+    if (error) fail(error)
+    const c = data as { mobile: string | null; email: string | null } | null
+    return c?.mobile ? ({ mobile: c.mobile, email: c.email } satisfies PartyContact) : null
+  },
+
+  async setGateCount(count) {
+    const { data, error } = await sb().rpc('admin_set_gate_count', { p_count: count })
+    if (error) migrationFail(error, 12, 'change the number of gate desks')
+    return (data as Row[]).map(toCounter)
+  },
+
+  async listDevices() {
+    const { data, error } = await sb().rpc('admin_list_devices')
+    if (error) migrationFail(error, 12, 'list devices')
+    return (data as Row[]).map((r): DeviceRow => ({
+      deviceId: r.deviceId, name: r.name, email: r.email, counter: r.counter, pending: r.pending ?? 0, appVersion: r.appVersion,
+      lastSyncAt: Number(r.lastSyncAt), clockOffsetMs: r.clockOffsetMs,
+    }))
+  },
+
+  async auditFeed(before?: AuditCursor) {
+    const { data, error } = await sb().rpc('audit_feed', { p_limit: 100, p_before_us: before?.atUs ?? null, p_before_key: before?.key ?? null })
+    if (error) migrationFail(error, 13, 'show the audit log')
+    return data as AuditPage
+  },
+
+  async clearAuditLog(reason) {
+    const { error } = await sb().rpc('admin_clear_audit_log', { p_reason: reason })
+    if (error) migrationFail(error, 13, 'clear the audit log')
   },
 }

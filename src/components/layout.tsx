@@ -17,8 +17,8 @@ export function TopRow() {
   return (
     <div className="navrow">
       <button type="button" className="chip neutral counter-btn" aria-label="Account and counter" onClick={() => ui.set({ account: true })}>
-        <Icon name={p.mode === 'dinner' ? 'utensils' : 'login'} size="s" />
-        {(p.mode === 'dinner' ? 'Dinner' : 'Entry') + ' · ' + counterLabel(p.counter ?? '')}
+        <Icon name="login" size="s" />
+        {counterLabel(p.counter ?? '')}
         <Icon name="chev-d" size="s" />
       </button>
       <SyncPill status={status} />

@@ -13,10 +13,14 @@ import { SearchScreen } from './screens/Search.tsx'
 import { SetupScreen } from './screens/Setup.tsx'
 import { PrivacyScreen } from './screens/Privacy.tsx'
 import { SignInScreen } from './screens/SignIn.tsx'
+import { AccessRemovedScreen } from './screens/AccessRemoved.tsx'
 
 // Screens people open less often load on demand. The service worker precaches every chunk, so they still work offline.
-const AuditScreen = lazy(() => import('./screens/Admin.tsx').then((m) => ({ default: m.AuditScreen })))
+const AuditScreen = lazy(() => import('./screens/Audit.tsx').then((m) => ({ default: m.AuditScreen })))
+const DevicesScreen = lazy(() => import('./screens/Devices.tsx').then((m) => ({ default: m.DevicesScreen })))
+const CountersScreen = lazy(() => import('./screens/Counters.tsx').then((m) => ({ default: m.CountersScreen })))
 const UsersScreen = lazy(() => import('./screens/Admin.tsx').then((m) => ({ default: m.UsersScreen })))
+const FlushScreen = lazy(() => import('./screens/Flush.tsx').then((m) => ({ default: m.FlushScreen })))
 const ImportScreen = lazy(() => import('./screens/Import.tsx').then((m) => ({ default: m.ImportScreen })))
 const GuestDetailScreen = lazy(() => import('./screens/GuestDetail.tsx').then((m) => ({ default: m.GuestDetailScreen })))
 const RegisterScreen = lazy(() => import('./screens/Register.tsx').then((m) => ({ default: m.RegisterScreen })))
@@ -31,7 +35,7 @@ export default function App() {
     <div className="gh app">
       <Sprite />
       {/* The privacy policy is public: Google and guests open it without signing in. */}
-      {pathname === '/privacy' ? <PrivacyScreen /> : !p.session ? <SignInScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
+      {pathname === '/privacy' ? <PrivacyScreen /> : !p.session ? <SignInScreen /> : p.accessRemoved ? <AccessRemovedScreen /> : !p.rosterAt || !p.counter ? <SetupScreen /> : <Shell />}
     </div>
   )
 }
@@ -55,6 +59,9 @@ function Shell() {
         {admin && <Route path="/admin/users" element={<UsersScreen />} />}
         {admin && <Route path="/admin/import" element={<ImportScreen />} />}
         {admin && <Route path="/admin/audit" element={<AuditScreen />} />}
+        {admin && <Route path="/admin/flush" element={<FlushScreen />} />}
+        {admin && <Route path="/admin/devices" element={<DevicesScreen />} />}
+        {admin && <Route path="/admin/counters" element={<CountersScreen />} />}
         <Route path="*" element={<Navigate to="/scan" replace />} />
       </Routes>
       </Suspense>

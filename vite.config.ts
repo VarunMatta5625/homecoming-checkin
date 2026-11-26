@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: 'Homecoming 2026 Check-in',
           short_name: 'Homecoming',
-          description: 'Gate entry and dinner check-in for GITAM Homecoming 2026.',
+          description: 'Gate check-in for GITAM Homecoming 2026.',
           theme_color: '#00706A',
           background_color: '#FDF0DA',
           display: 'standalone',

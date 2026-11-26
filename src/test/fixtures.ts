@@ -31,7 +31,6 @@ export function party(over: Partial<Party> = {}): Party {
     spouse,
     children,
     partySize: 1 + (spouse !== 'no' ? 1 : 0) + children,
-    entitledOverride: null,
     parking: 'none',
     possibleDuplicateOf: null,
     deletedAt: null,
@@ -50,12 +49,16 @@ export function ev(partyId: string, checkpoint: Checkpoint, qty: number, at: num
     method: 'qr',
     actorId: 'u1',
     actorName: 'Rahul',
-    counter: checkpoint === 'entry' ? 'GATE-1' : 'DINNER-1',
+    counter: 'GATE-1',
     deviceId: 'd1',
     clientAt: at,
     ...over,
   }
 }
+
+/** A dinner scan as the earlier version of the app wrote it. The shared database may still hold these. */
+export const legacyDinner = (partyId: string, qty: number, at: number, over: Partial<ScanEvent> = {}): ScanEvent =>
+  ev(partyId, 'entry', qty, at, { checkpoint: 'dinner' as unknown as Checkpoint, counter: 'DINNER-1', ...over })
 
 export const voidOf = (e: ScanEvent, at: number): ScanEvent => ev(e.partyId, e.checkpoint, e.qty, at, { action: 'void', voidsEventId: e.id, counter: e.counter })
 

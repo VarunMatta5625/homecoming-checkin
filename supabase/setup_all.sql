@@ -830,6 +830,395 @@ begin
     last_sync_at = excluded.last_sync_at, clock_offset_ms = excluded.clock_offset_ms;
 end $$;
 
+-- ===== migrations/20261122000009_checkin_only.sql =====
+-- Check-in only: the app no longer serves dinner. Apply this together with deploying the check-in-only app (the
+-- refactor/checkin-only branch). Do NOT apply it while the earlier app, which records dinner scans, is still in use:
+-- it would refuse those scans and break its stats.
+--
+-- Nothing is deleted. Old dinner scans (if any) stay in scan_events, so the append-only log keeps its history; the
+-- 'dinner' checkpoint row stays too, because those rows point at it.
+--
+-- 1. party_state no longer has the dinner columns (served, last_served_at, over_served, served_without_entry), and a
+--    party's entitlement is its party size. entitled_override stays in the parties table, unused.
+-- 2. The server refuses any event that is not an entry check-in, including a void of an old dinner scan. A phone that
+--    still has dinner scans waiting to sync will see them listed as "Not sent". Sync every phone before applying this.
+-- 3. The dinner counters are switched off. They stay in the table so old scans can still show their names.
+
+-- 1. The view. Same rule as src/lib/state.ts partyState(): live = entry passes that were not undone, earliest wins.
+drop view party_state;
+create view party_state with (security_invoker = true) as
+with live as (
+  select e.* from scan_events e
+  where e.action = 'pass'
+    and not exists (select 1 from scan_events v
+                    where v.action = 'void' and v.voids_event_id = e.id)
+),
+entry as (
+  select distinct on (party_id) party_id, client_at as entered_at, qty as headcount, counter
+  from live where checkpoint = 'entry'
+  order by party_id, client_at, received_at          -- earliest wins
+),
+entry_n as (select party_id, count(*) n from live where checkpoint = 'entry' group by 1)
+select p.id as party_id,
+  p.party_size                                              as entitled,
+  (en.party_id is not null)                                 as entered,
+  en.entered_at, en.headcount,
+  coalesce(n.n, 0) > 1                                      as duplicate_entry,
+  (p.possible_duplicate_of is not null)                     as possible_duplicate
+from parties p
+left join entry en on en.party_id = p.id
+left join entry_n n on n.party_id = p.id
+where p.deleted_at is null;
+grant select on party_state to authenticated;
+
+-- 2. Same function as migration 8, plus one line: only entry events are accepted.
+create or replace function _push_event(me staff_users, p jsonb) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  eid uuid := (p->>'id')::uuid;
+  act event_action := coalesce(p->>'action', 'pass')::event_action;
+  vid uuid := nullif(p->>'voidsEventId', '')::uuid;
+  cat timestamptz := to_timestamp((p->>'clientAt')::numeric / 1000.0);
+  tgt scan_events;
+begin
+  if exists (select 1 from scan_events where id = eid) then return '{"status":"duplicate"}'::jsonb; end if;
+  if coalesce(p->>'checkpoint', '') <> 'entry' then raise exception 'Only check-ins are recorded'; end if;
+  if not exists (select 1 from parties where id = (p->>'partyId')::uuid) then raise exception 'Unknown party'; end if;
+  if me.role = 'volunteer' and (p->>'method' = 'staff' or nullif(p->>'overrideReason', '') is not null) then
+    raise exception 'Staff only';
+  end if;
+  if act = 'void' then
+    select * into tgt from scan_events where id = vid;
+    if not found or tgt.action <> 'pass' then raise exception 'Nothing to undo'; end if;
+    if tgt.party_id <> (p->>'partyId')::uuid then raise exception 'That scan belongs to another guest'; end if;
+    if exists (select 1 from scan_events where voids_event_id = vid) then raise exception 'Already undone'; end if;
+    if me.role = 'volunteer' then
+      if tgt.actor_id <> me.id then raise exception 'You can only undo your own scans'; end if;
+      if tgt.device_id = (p->>'deviceId')::uuid then
+        -- Same phone, one clock.
+        if cat < tgt.client_at then raise exception 'That undo is dated before the scan'; end if;
+        if cat - tgt.client_at > interval '120 seconds' then raise exception 'Undo window has passed'; end if;
+      else
+        -- Another phone: its clock can't be compared with the scan's, so use ours.
+        if now() - tgt.received_at > interval '120 seconds' then raise exception 'Undo window has passed'; end if;
+      end if;
+    end if;
+  end if;
+  insert into scan_events (id, party_id, checkpoint, action, qty, voids_event_id, reason, override_reason, method,
+                           actor_id, counter, device_id, client_at, app_version)
+  values (eid, (p->>'partyId')::uuid, p->>'checkpoint', act, coalesce((p->>'qty')::int, 1), vid,
+          nullif(p->>'reason', ''), nullif(p->>'overrideReason', ''), p->>'method',
+          me.id, nullif(p->>'counter', ''), (p->>'deviceId')::uuid, cat, p->>'appVersion');
+  return '{"status":"accepted"}'::jsonb;
+end $$;
+
+-- 3. Dinner counters off. The rows stay so old scans keep their counter names.
+update counters set active = false where kind = 'dinner';
+
+-- ===== migrations/20261122000010_flush_checkins.sql =====
+-- Flush: an admin clears every check-in so everyone counts as not arrived again (rehearsals and dry runs). Run after
+-- 20261122000009. It adds two functions and changes nothing that exists, so it is safe to apply while the earlier app
+-- is still deployed.
+--
+-- How: one void event for every live check-in, written in a single transaction. scan_events stays append-only, nobody's
+-- registration is touched, and every phone picks the voids up on its next pull, because a void is a new row with a
+-- higher seq (a server delete would be invisible to phones that already hold the rows). The voids carry the reason
+-- 'Flush: <why>', method 'staff' and one shared timestamp, so the app can show them as one line.
+--
+-- On-spot guests (registered in the app) can optionally be removed too: soft-deleted like a guest-list Replace, and
+-- their contact rows deleted so a later registration with the same mobile is not flagged as a duplicate of them.
+--
+-- Same lock as push_batch, so the voids and any phone's scan are applied one after the other.
+
+-- What a flush would do right now, plus phones that still have unsent items (their scans would arrive after the flush
+-- and check people in again). device_status is a heartbeat: an offline phone's last report can be old.
+create function admin_flush_preview() returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare me staff_users := _require_role('admin'); parties_in int; people int; scans int; onspot int; phones jsonb;
+begin
+  select count(*), coalesce(sum(headcount), 0) into parties_in, people from party_state where entered;
+  select count(*) into scans from scan_events e
+    where e.action = 'pass' and e.checkpoint = 'entry'
+      and not exists (select 1 from scan_events v where v.action = 'void' and v.voids_event_id = e.id);
+  select count(*) into onspot from parties where source = 'onspot' and deleted_at is null;
+  select coalesce(jsonb_agg(jsonb_build_object('counter', d.counter, 'pending', d.pending_count,
+                                               'lastSyncAt', (extract(epoch from d.last_sync_at) * 1000)::bigint)
+                            order by d.last_sync_at desc), '[]'::jsonb)
+    into phones
+  from device_status d
+  where d.pending_count > 0 and d.last_sync_at > now() - interval '6 hours';
+  return jsonb_build_object('checkedIn', parties_in, 'people', people, 'scans', scans, 'onSpot', onspot, 'phones', phones);
+end $$;
+
+create function admin_flush_checkins(p_reason text, p_remove_onspot boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me staff_users := _require_role('admin'); why text := btrim(coalesce(p_reason, '')); voided int; removed int := 0;
+begin
+  if length(why) < 3 then raise exception 'A reason is required'; end if;
+  perform pg_advisory_xact_lock(1);
+  perform set_config('app.reason', 'Flush: ' || why, true);
+
+  insert into scan_events (id, party_id, checkpoint, action, qty, voids_event_id, reason, method, actor_id, device_id, client_at, app_version)
+  select gen_random_uuid(), e.party_id, 'entry', 'void', 0, e.id, 'Flush: ' || why, 'staff', me.id, gen_random_uuid(), now(), 'server'
+  from scan_events e
+  where e.action = 'pass' and e.checkpoint = 'entry'
+    and not exists (select 1 from scan_events v where v.action = 'void' and v.voids_event_id = e.id);
+  get diagnostics voided = row_count;
+
+  if p_remove_onspot then
+    select count(*) into removed from parties where source = 'onspot' and deleted_at is null;
+    update parties set deleted_at = now(), updated_by = me.id where source = 'onspot' and deleted_at is null;
+    delete from party_contacts where party_id in (select id from parties where source = 'onspot' and deleted_at is not null);
+  end if;
+
+  insert into audit_log (actor_id, table_name, row_id, action, after, reason)
+  values (me.id, 'scan_events', 'all', 'flush', jsonb_build_object('voided', voided, 'removedOnSpot', removed), why);
+  return jsonb_build_object('voided', voided, 'removedOnSpot', removed);
+end $$;
+
+revoke execute on function admin_flush_preview(), admin_flush_checkins(text, boolean) from public, anon;
+grant execute on function admin_flush_preview(), admin_flush_checkins(text, boolean) to authenticated;
+
+-- ===== migrations/20261122000011_delete_user.sql =====
+-- Delete a person from the staff list for good, but only when nothing on record points at them. Run after
+-- 20261122000010. It adds one function and replaces admin_list_users (same output plus one key), so it is safe to apply
+-- while the earlier app is deployed: that app ignores the extra key and has no delete button.
+--
+-- Switching someone off (admin_set_user with active = false) stays the normal way to remove access. A person who ever
+-- scanned a guest, registered one, resolved a review, added another user or edited anything can't be deleted: those
+-- records name them, and the log must keep saying who did what. Their own sign-in entries in the audit log do not
+-- count (every account that ever signed in has one); those lose the pointer to the account, the entries stay.
+--
+-- Also: a request from an account that is switched off or no longer on the list now fails with 'Your account is switched
+-- off or removed' instead of 'not authorised' (same error code). The check-in-only app uses that wording to tell this
+-- apart from a role that is too low or a sign-in that ran out, and signs the phone out. The earlier app only looks at
+-- the code, so it behaves as before. Until this migration is applied the new app falls back to the old behaviour (a
+-- "please sign in again" banner).
+--
+-- The sign-in record in Supabase Authentication, Users is not touched. Without a staff_users row that account gets
+-- "not on the list", and the sign-up hook still refuses new accounts for unlisted emails.
+
+create or replace function _require_staff() returns staff_users language plpgsql stable security definer set search_path = public as $$
+declare me staff_users;
+begin
+  select * into me from staff_users where auth_user_id = auth.uid() and active;
+  if not found then raise exception 'Your account is switched off or removed' using errcode = '42501'; end if;
+  return me;
+end $$;
+
+-- Private helper: does any record name this person?
+create function _user_has_history(uid uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from scan_events where actor_id = uid)
+      or exists (select 1 from parties where created_by = uid or updated_by = uid)
+      or exists (select 1 from review_resolutions where resolved_by = uid)
+      or exists (select 1 from staff_users where created_by = uid)
+      or exists (select 1 from audit_log where actor_id = uid and not (table_name = 'staff_users' and row_id = uid::text))
+$$;
+
+create or replace function admin_list_users() returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare me staff_users := _require_role('admin');
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('email', email, 'name', coalesce(display_name, ''), 'role', role, 'active', active,
+                                                       'canDelete', (id <> me.id and not _user_has_history(id)))
+                                    order by role desc, email) from staff_users), '[]'::jsonb);
+end $$;
+
+create function admin_delete_user(p_email text) returns jsonb language plpgsql security definer set search_path = public as $$
+declare me staff_users := _require_role('admin'); tgt staff_users;
+begin
+  select * into tgt from staff_users where email = lower(btrim(p_email));
+  if not found then raise exception 'No such person'; end if;
+  if tgt.id = me.id then raise exception 'You can''t delete yourself'; end if;
+  if tgt.active then raise exception 'Switch them off first'; end if;
+  if _user_has_history(tgt.id) then raise exception 'They have scans or edits on record, so they can only be switched off'; end if;
+  perform set_config('app.reason', 'User deleted', true);
+  update audit_log set actor_id = null where actor_id = tgt.id;
+  delete from device_status where user_id = tgt.id;
+  delete from staff_users where id = tgt.id;     -- the audit trigger records the deletion, with who did it
+  return jsonb_build_object('email', tgt.email);
+end $$;
+
+revoke execute on function _user_has_history(uuid) from public, anon, authenticated;
+revoke execute on function admin_delete_user(text) from public, anon;
+grant execute on function admin_delete_user(text) to authenticated;
+
+-- ===== migrations/20261122000012_review_gates_devices.sql =====
+-- Three small admin and staff features. Run after 20261122000011. Only replaces resolve_review (same signature, same
+-- grant) and adds two functions, so it is safe to apply while the earlier app is deployed: that app never calls any of them.
+--
+-- 1. resolve_review: staff say "these are two different guests" and the flag goes away. The flag is the column
+--    parties.possible_duplicate_of, so clearing it is an ordinary party change: it gets a new change_seq and every phone
+--    picks it up on its next pull, with no new sync channel. The reason goes to the audit log through the party trigger.
+--    It takes the same lock as push_batch and update_party, for the same reason (change_seq must follow commit order).
+-- 2. admin_set_gate_count: an admin sets how many gate desks there are. Only kind = 'gate' rows are touched. Missing
+--    GATE-n rows are added, rows above n are switched off (never deleted: old scans point at them). Phones copy the
+--    counters table every ten minutes.
+-- 3. admin_list_devices: the phones that have reported in, with the name of the person using each. Staff can read
+--    device_status directly but not other people's names, so this is an admin function.
+
+create or replace function resolve_review(p_party_id uuid, p_note text) returns void language plpgsql security definer set search_path = public as $$
+declare me staff_users := _require_role('staff'); why text := btrim(coalesce(p_note, ''));
+begin
+  if length(why) < 3 then raise exception 'A reason is required'; end if;
+  perform pg_advisory_xact_lock(1);
+  perform set_config('app.reason', 'Not a duplicate: ' || why, true);
+  update parties set possible_duplicate_of = null, updated_by = me.id
+  where id = p_party_id and possible_duplicate_of is not null and deleted_at is null;
+  if not found then raise exception 'That guest is not flagged for review'; end if;
+  insert into review_resolutions (party_id, note, resolved_by) values (p_party_id, why, me.id);
+end $$;
+
+create function admin_set_gate_count(p_count int) returns jsonb language plpgsql security definer set search_path = public as $$
+declare me staff_users := _require_role('admin'); before int;
+begin
+  if p_count is null or p_count < 1 or p_count > 20 then raise exception 'Choose from 1 to 20 gate desks'; end if;
+  select count(*) into before from counters where kind = 'gate' and active;
+  insert into counters (code, label, kind, active)
+    select 'GATE-' || i, 'Gate desk ' || i, 'gate', true from generate_series(1, p_count) i
+  on conflict (code) do nothing;
+  update counters set active = (substring(code from 6)::int <= p_count) where kind = 'gate' and code ~ '^GATE-[0-9]+$';
+  insert into audit_log (actor_id, table_name, row_id, action, before, after)
+  values (me.id, 'counters', 'gates', 'set', jsonb_build_object('gates', before), jsonb_build_object('gates', p_count));
+  return (select coalesce(jsonb_agg(jsonb_build_object('code', code, 'label', label, 'kind', kind, 'active', active) order by code), '[]'::jsonb)
+          from counters where kind = 'gate');
+end $$;
+
+create function admin_list_devices() returns jsonb language plpgsql stable security definer set search_path = public as $$
+begin
+  perform _require_role('admin');
+  return coalesce((select jsonb_agg(jsonb_build_object(
+                     'deviceId', x.device_id, 'name', x.name, 'email', x.email, 'counter', x.counter, 'pending', x.pending_count,
+                     'appVersion', x.app_version, 'lastSyncAt', (extract(epoch from x.last_sync_at) * 1000)::bigint,
+                     'clockOffsetMs', x.clock_offset_ms) order by x.last_sync_at desc)
+                   from (select d.*, coalesce(s.display_name, split_part(s.email::text, '@', 1)) as name, s.email
+                         from device_status d join staff_users s on s.id = d.user_id
+                         order by d.last_sync_at desc limit 200) x), '[]'::jsonb);
+end $$;
+
+revoke execute on function admin_set_gate_count(int), admin_list_devices() from public, anon;
+grant execute on function admin_set_gate_count(int), admin_list_devices() to authenticated;
+
+-- ===== migrations/20261122000013_audit_feed.sql =====
+-- The audit log an admin reads in the app: everything from the start (or from the last "clear") to now, check-ins and undos
+-- included. Run after 20261122000012. Replaces audit_feed (nothing in either app called it) and adds admin_clear_audit_log.
+--
+-- What the feed returns. Only what one line on screen needs, never the raw before/after rows: the audit table holds full
+-- mobile numbers and emails of guests (from party_contacts) and those must not reach a phone. Rows are classified here
+-- ('kind') so the app only has to word them.
+--   - audit_log rows, plus scan_events rows (check-in, undo, staff reset) so one list covers everything.
+--   - Per-guest contact rows written by an import or an on-spot registration are left out; contact *reads* stay in.
+--   - Bulk rows share a transaction, so rows with the same person, table, action, reason and timestamp collapse into one
+--     line with a count: a 5000-guest import is one line. Grouping happens before paging, so a line never splits.
+--   - The voids a flush writes are left out: the flush has its own line.
+--   - Newest first, paged by a cursor of (time, key). Times are microseconds since 1970.
+--
+-- "Clear" does not delete anything. It stores the moment in event_settings.audit_since and the feed starts there. The
+-- log and the scans stay in the database (and can be shown again by setting audit_since back to null). Refused once the
+-- event is live, so the real day can never be hidden.
+
+alter table event_settings add column audit_since timestamptz;
+
+drop function audit_feed(int, bigint);
+
+create function audit_feed(p_limit int default 100, p_before_us bigint default null, p_before_key text default null) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare since timestamptz; lim int := least(greatest(coalesce(p_limit, 100), 1), 200);
+begin
+  perform _require_role('admin');
+  select audit_since into since from event_settings;
+  return jsonb_build_object(
+    'since', case when since is null then null else (extract(epoch from since) * 1000)::bigint end,
+    'entries', coalesce((
+      with logrows as (
+        select a.*,
+               case when a.table_name = 'parties' and a.reason is not null
+                    then coalesce(a.actor_id::text, '') || '|' || a.action || '|' || a.reason || '|' || a.at::text
+                    else a.id::text end as grp
+        from audit_log a
+        where (since is null or a.at >= since)
+          and not (a.table_name = 'party_contacts' and a.action <> 'read')
+          and not (a.table_name = 'event_settings' and a.action = 'update'
+                   and (a.before - 'audit_since' - 'updated_at') = (a.after - 'audit_since' - 'updated_at'))
+      ), logs as (
+        select distinct on (grp) l.*, count(*) over (partition by grp)::int as n
+        from logrows l order by grp, id desc
+      ), entries as (
+        select 'a' || lpad(l.id::text, 20, '0') as key,
+               (extract(epoch from l.at) * 1000000)::bigint as at_us,
+               coalesce(s.display_name, split_part(s.email::text, '@', 1), 'System') as actor,
+               case
+                 when l.table_name = 'parties' and l.action = 'insert' and l.reason like 'Guest list import%' then 'guests_imported'
+                 when l.table_name = 'parties' and l.action = 'insert' then 'guest_added'
+                 when l.table_name = 'parties' and l.action = 'update' and l.before->>'deleted_at' is null and l.after->>'deleted_at' is not null then 'guest_removed'
+                 when l.table_name = 'parties' and l.action = 'update' and l.before->>'possible_duplicate_of' is not null and l.after->>'possible_duplicate_of' is null then 'review_cleared'
+                 when l.table_name = 'parties' and l.action = 'update' then 'guest_edited'
+                 when l.table_name = 'party_contacts' and l.row_id = 'all' then 'passes_exported'
+                 when l.table_name = 'party_contacts' then 'contact_read'
+                 when l.table_name = 'staff_users' and l.action = 'insert' then 'user_added'
+                 when l.table_name = 'staff_users' and l.action = 'delete' then 'user_deleted'
+                 when l.table_name = 'staff_users' and l.before->>'auth_user_id' is null and l.after->>'auth_user_id' is not null then 'user_linked'
+                 when l.table_name = 'staff_users' then 'user_changed'
+                 when l.table_name = 'event_settings' and l.action = 'clear' then 'audit_cleared'
+                 when l.table_name = 'event_settings' then 'settings_changed'
+                 when l.table_name = 'scan_events' and l.action = 'flush' then 'flush'
+                 when l.table_name = 'counters' then 'gates_set'
+                 else 'other'
+               end as kind,
+               case
+                 when l.table_name = 'parties' then coalesce(l.after, l.before)->>'lead_name'
+                 when l.table_name = 'staff_users' then coalesce(l.after, l.before)->>'email'
+                 when l.table_name = 'party_contacts' and l.row_id ~ '^[0-9a-f-]{36}$' then (select p.lead_name from parties p where p.id = l.row_id::uuid)
+               end as subject,
+               case
+                 when l.table_name = 'parties' then l.row_id::uuid
+                 when l.table_name = 'party_contacts' and l.row_id ~ '^[0-9a-f-]{36}$' then l.row_id::uuid
+               end as party_id,
+               l.reason, l.n,
+               case
+                 when l.table_name = 'parties' and l.action = 'update' then jsonb_build_object('changed', coalesce(
+                   (select jsonb_agg(k order by k) from jsonb_object_keys(l.after) k
+                    where l.after->k is distinct from l.before->k and k not in ('updated_at', 'change_seq', 'updated_by')), '[]'::jsonb))
+                 when l.table_name = 'parties' then jsonb_build_object('source', l.after->>'source')
+                 when l.table_name = 'staff_users' then jsonb_build_object(
+                   'role', coalesce(l.after, l.before)->>'role', 'wasRole', l.before->>'role',
+                   'active', (coalesce(l.after, l.before)->>'active')::boolean, 'wasActive', (l.before->>'active')::boolean)
+                 when l.table_name in ('scan_events', 'counters') then coalesce(l.after, '{}'::jsonb)
+                 else '{}'::jsonb
+               end as extra
+        from logs l left join staff_users s on s.id = l.actor_id
+        union all
+        select 's' || lpad(e.seq::text, 20, '0'),
+               (extract(epoch from e.received_at) * 1000000)::bigint,
+               coalesce(s.display_name, split_part(s.email::text, '@', 1), 'System'),
+               case when e.action = 'pass' then 'checkin' when e.method = 'staff' then 'reset' else 'undo' end,
+               p.lead_name, e.party_id, e.reason, 1,
+               jsonb_build_object('qty', e.qty, 'counter', e.counter)
+        from scan_events e left join staff_users s on s.id = e.actor_id left join parties p on p.id = e.party_id
+        where (since is null or e.received_at >= since)
+          and not (e.action = 'void' and e.reason like 'Flush: %')
+      ), page as (
+        select * from entries
+        where p_before_us is null or (at_us, key) < (p_before_us, p_before_key)
+        order by at_us desc, key desc limit lim
+      )
+      select jsonb_agg(jsonb_build_object('key', key, 'atUs', at_us, 'actor', actor, 'kind', kind, 'subject', subject,
+                                          'partyId', party_id, 'reason', reason, 'n', n, 'extra', extra) order by at_us desc, key desc)
+      from page
+    ), '[]'::jsonb));
+end $$;
+
+create function admin_clear_audit_log(p_reason text) returns jsonb language plpgsql security definer set search_path = public as $$
+declare me staff_users := _require_role('admin'); why text := btrim(coalesce(p_reason, ''));
+begin
+  if length(why) < 3 then raise exception 'A reason is required'; end if;
+  if (select is_live from event_settings) then raise exception 'The event is live: the audit log can no longer be cleared'; end if;
+  update event_settings set audit_since = now(), updated_at = now();
+  -- Same timestamp as audit_since (both are the transaction time), so this line is the first one the cleared feed shows.
+  insert into audit_log (actor_id, table_name, row_id, action, reason) values (me.id, 'event_settings', 'audit', 'clear', why);
+  return jsonb_build_object('since', (extract(epoch from now()) * 1000)::bigint);
+end $$;
+
+revoke execute on function audit_feed(int, bigint, text), admin_clear_audit_log(text) from public, anon;
+grant execute on function audit_feed(int, bigint, text), admin_clear_audit_log(text) to authenticated;
+
 -- ===== seed_dev.sql =====
 -- FAKE data for testing only. Never load real attendee data from here.
 -- Creates test accounts on the allowlist (you still create matching Auth users, see supabase/README.md)
@@ -870,4 +1259,3 @@ begin
 end $$;
 
 drop function _fake_code();
-

@@ -1,6 +1,10 @@
 const tf = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })
 export const fmtTime = (ms: number) => tf.format(ms).replace(/\s?(am|pm)/i, (_, p: string) => ' ' + p.toUpperCase())
 
+const dtf = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })
+/** "12 Dec, 10:05 AM": for lists that span more than one day. */
+export const fmtDateTime = (ms: number) => dtf.format(ms).replace(/\s?(am|pm)/i, (_, p: string) => ' ' + p.toUpperCase())
+
 export function ago(ms: number, now = Date.now()) {
   const m = Math.floor((now - ms) / 60000)
   if (m < 1) return 'just now'

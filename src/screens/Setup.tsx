@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CounterPicker } from '../components/AccountSheet.tsx'
-import { Btn, Empty, Icon, Logo } from '../components/ui.tsx'
+import { Btn, Empty, Icon } from '../components/ui.tsx'
 import { counterLabel } from '../lib/counters.ts'
 import { downloadRoster } from '../lib/actions.ts'
 import { applyCounter, savedCounter } from '../lib/counter.ts'
@@ -10,23 +10,12 @@ import { useSyncStatus } from '../lib/hooks.ts'
 import { prefs } from '../lib/prefs.ts'
 import { useLiveQuery } from 'dexie-react-hooks'
 
-interface InstallEvent extends Event {
-  prompt: () => Promise<void>
-}
-let deferredInstall: InstallEvent | null = null
-addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault()
-  deferredInstall = e as InstallEvent
-})
+type Step = 'download' | 'paused' | 'nolist' | 'ready'
 
-const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
-
-type Step = 'home' | 'download' | 'paused' | 'nolist' | 'ready'
-
-/** First run: add to Home Screen, download the guest list, pick a counter. */
+/** First run: download the guest list, pick a counter. */
 export function SetupScreen() {
   const p = prefs.use()
-  const [step, setStep] = useState<Step>(p.rosterAt ? 'ready' : !p.homeScreenDone && !standalone() ? 'home' : 'download')
+  const [step, setStep] = useState<Step>(p.rosterAt ? 'ready' : 'download')
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const started = useRef(false)
 
@@ -50,8 +39,6 @@ export function SetupScreen() {
     started.current = true
     start()
   }
-
-  if (step === 'home') return <HomeScreenStep onDone={() => { prefs.set({ homeScreenDone: true }); setStep('download') }} />
 
   if (step === 'nolist')
     return (
@@ -83,38 +70,6 @@ export function SetupScreen() {
         <div className="cell"><span className="grow">Counter setup</span><span className="val">Waiting</span></div>
       </div>
       {paused ? <Btn icon="refresh" onClick={retry}>Resume download</Btn> : <p className="t-cap muted center" style={{ margin: 0 }}>About a minute on venue Wi-Fi</p>}
-    </main>
-  )
-}
-
-function HomeScreenStep({ onDone }: { onDone: () => void }) {
-  const [installed, setInstalled] = useState(false)
-  const install = async () => {
-    await deferredInstall?.prompt()
-    deferredInstall = null
-    setInstalled(true)
-  }
-  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
-  return (
-    <main className="screen notabs stack" style={{ alignItems: 'center', textAlign: 'center', padding: '48px 24px 0', gap: 10 }}>
-      <Logo name="homecoming" height={88} />
-      <h1 className="t-title" style={{ margin: '20px 0 0', fontSize: 26, lineHeight: '32px', fontWeight: 700 }}>Add to your Home Screen</h1>
-      <p className="t-body muted" style={{ margin: 0 }}>It works offline and opens full-screen, like a normal app.{ios ? ' On iPhone this also keeps your guest list from being cleared.' : ''}</p>
-      <div className="stack g3" style={{ width: '100%', marginTop: 16, textAlign: 'left' }}>
-        <div className="card" style={{ padding: 14 }}>
-          <span className="t-cap muted">iPhone · Safari</span>
-          <ol className="t-body" style={{ margin: '6px 0 0', paddingLeft: 22 }}><li>Tap Share in the toolbar</li><li>Choose Add to Home Screen</li><li>Tap Add</li></ol>
-        </div>
-        <div className="card" style={{ padding: 14 }}>
-          <span className="t-cap muted">Android · Chrome</span>
-          <ol className="t-body" style={{ margin: '6px 0 0', paddingLeft: 22 }}><li>Tap Install when it pops up</li><li>Or ⋮ menu, then Install app</li></ol>
-        </div>
-      </div>
-      <div className="stack g2" style={{ width: '100%', marginTop: 16 }}>
-        {deferredInstall && !installed && <Btn icon="download" onClick={() => void install()}>Install app</Btn>}
-        <Btn kind={deferredInstall && !installed ? 'secondary' : 'primary'} onClick={onDone}>I’ve added it</Btn>
-        <Btn kind="plain" onClick={onDone}>Not now</Btn>
-      </div>
     </main>
   )
 }
@@ -156,7 +111,6 @@ function ReadyStep() {
           <span className="val">{counter ? counterLabel(counter) : 'Choose'}</span>
           <Icon name="chev-r" size="s" className="chev" />
         </button>
-        <div className="cell"><span className="grow">Start in</span><span className="val">{counter?.startsWith('GATE') ? 'Entry' : counter ? 'Dinner' : '—'}</span></div>
       </div>
       <div style={{ flex: 1 }} />
       <p className="t-cap muted center" style={{ margin: 0 }}>Signed in as {p.session?.name} · {p.session && roleLabel(p.session.role)}</p>

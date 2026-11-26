@@ -1,7 +1,7 @@
 export type Role = 'volunteer' | 'staff' | 'admin'
 export type Ynm = 'no' | 'yes' | 'maybe'
 export type Parking = 'none' | 'two_wheeler' | 'four_wheeler'
-export type Checkpoint = 'entry' | 'dinner'
+export type Checkpoint = 'entry'
 export type Method = 'qr' | 'search' | 'code' | 'staff'
 
 /** Roster row held on every phone. No full mobile number or email (privacy invariant 6). */
@@ -20,7 +20,6 @@ export interface Party {
   spouse: Ynm
   children: number
   partySize: number
-  entitledOverride: number | null
   parking: Parking
   possibleDuplicateOf: string | null
   deletedAt: string | null
@@ -34,7 +33,7 @@ export interface ScanEvent {
   partyId: string
   checkpoint: Checkpoint
   action: 'pass' | 'void'
-  /** entry: headcount. dinner: servings. */
+  /** Headcount checked in. */
   qty: number
   voidsEventId?: string | null
   reason?: string | null

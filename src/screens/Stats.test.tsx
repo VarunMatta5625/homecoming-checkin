@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Roster, SyncStatus } from '../lib/hooks.ts'
-import { ev, MIN, party, resetIds, rosterOf, T0, voidOf } from '../test/fixtures.ts'
+import { ev, MIN, party, resetIds, rosterOf, T0 } from '../test/fixtures.ts'
 import type { Party, ScanEvent } from '../lib/types.ts'
 
 const h = vi.hoisted(() => ({
@@ -27,24 +27,18 @@ import { StatsScreen } from './Stats.tsx'
 
 const NOW = T0 + 90 * MIN
 
-/** Ten guests: 7 in, 6 meals, one party over-served (needs review), one walk-in party. */
+/** Ten guests: 7 in, one party that may be listed twice (needs review), one walk-in party. */
 function scenario() {
   const A = party({ batchYear: 2010, school: 'School of Technology', spouse: 'yes', children: 2, parking: 'four_wheeler' }) // 4
   const B = party({ batchYear: 2010, school: 'School of Science' }) // 1
   const C = party({ batchYear: 2005, school: 'School of Technology', spouse: 'yes' }) // 2, not here
   const D = party({ batchYear: 2015, school: null, source: 'onspot', children: 1, parking: 'two_wheeler' }) // 2
-  const E = party({ batchYear: 2010, school: 'School of Technology' }) // 1
-  const a1 = ev(A.id, 'dinner', 1, T0 + 40 * MIN, { counter: 'DINNER-1', overrideReason: 'Voided one' })
+  const E = party({ batchYear: 2010, school: 'School of Technology', possibleDuplicateOf: A.id }) // 1, shares a mobile with A
   const events: ScanEvent[] = [
     ev(A.id, 'entry', 3, T0 + 10 * MIN, { counter: 'GATE-1' }),
-    ev(A.id, 'dinner', 3, T0 + 40 * MIN, { counter: 'DINNER-1' }),
-    a1,
-    voidOf(a1, T0 + 41 * MIN),
     ev(B.id, 'entry', 1, T0 + 20 * MIN, { counter: 'GATE-2' }),
-    ev(B.id, 'dinner', 1, T0 + 45 * MIN, { counter: 'DINNER-2', overrideReason: 'Chief guest' }),
     ev(D.id, 'entry', 2, T0 + 30 * MIN, { counter: 'GATE-1' }),
     ev(E.id, 'entry', 1, T0 + 35 * MIN, { counter: 'GATE-2' }),
-    ev(E.id, 'dinner', 2, NOW - 2 * MIN, { counter: 'DINNER-3' }),
   ]
   return { parties: [A, B, C, D, E], events }
 }
@@ -114,20 +108,18 @@ describe('states before there are numbers', () => {
     const ps = [party({ children: 1 }), party()]
     load(ps, [])
     mount()
-    expect(tiles()).toEqual(['0On campus now', '0%0 of 3 arrived', '0Meals served', '0Review'])
+    expect(tiles()).toEqual(['0On campus now', '0%0 of 3 arrived', '0Review'])
     expect(screen.getByText('0 of 3 guests have checked in.')).toBeTruthy()
     expect(screen.getByText(/No check-ins yet/)).toBeTruthy()
-    click(tab('Dinner'))
-    expect(screen.getByText(/No meals served yet/)).toBeTruthy()
   })
 })
 
 describe('header tiles and footer', () => {
-  it('shows people on campus, percent, meals and the review count', () => {
+  it('shows people on campus, percent and the review count', () => {
     const { parties, events } = scenario()
     load(parties, events)
     mount()
-    expect(tiles()).toEqual(['7On campus now', '70%7 of 10 arrived', '6Meals served', '1 Review ›'])
+    expect(tiles()).toEqual(['7On campus now', '70%7 of 10 arrived', '1 Review ›'])
   })
   it('the Review tile goes to the review screen', () => {
     const { parties, events } = scenario()
@@ -173,35 +165,19 @@ describe('header tiles and footer', () => {
 })
 
 describe('alerts', () => {
-  it('names a single quiet counter, but only when another counter is active', () => {
-    const p = party({ children: 3 })
-    load([p], [ev(p.id, 'entry', 4, T0), ev(p.id, 'dinner', 1, NOW - 40 * MIN, { counter: 'DINNER-1' })])
-    mount()
-    expect(screen.queryByText(/quiet for/)).toBeNull() // dinner has gone quiet everywhere: not an alert
-    cleanup()
-    load([p], [ev(p.id, 'entry', 4, T0), ev(p.id, 'dinner', 1, NOW - 40 * MIN, { counter: 'DINNER-1' }), ev(p.id, 'dinner', 1, NOW - MIN, { counter: 'DINNER-2' })])
-    mount()
-    expect(screen.getByText('Counter 1 quiet for 40 min')).toBeTruthy()
-  })
-  it('groups several quiet counters into one line', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    mount()
-    expect(screen.getByText('2 counters quiet for 10+ min')).toBeTruthy()
-  })
   it('starts collapsed with a "+N more" and expands and collapses', () => {
     const { parties, events } = scenario()
     load(parties, events)
     h.status = { ...h.status, failed: 2 }
     mount()
-    // quiet counters, failed syncs, one review: three alerts
-    expect(screen.getByText('+2 more')).toBeTruthy()
-    expect(screen.queryByText(/syncs failed/)).toBeNull()
-    click(screen.getByText('+2 more'))
+    // failed syncs and one review: two alerts
+    expect(screen.getByText('+1 more')).toBeTruthy()
+    expect(screen.queryByText(/needs? review/)).toBeNull()
+    click(screen.getByText('+1 more'))
     expect(screen.getByText('2 syncs failed on this phone. Tap to retry')).toBeTruthy()
-    expect(screen.getByText('1 party need review')).toBeTruthy()
+    expect(screen.getByText('1 party needs review')).toBeTruthy()
     click(screen.getByText('Show fewer'))
-    expect(screen.getByText('+2 more')).toBeTruthy()
+    expect(screen.getByText('+1 more')).toBeTruthy()
   })
   it('retries failed syncs when the alert is tapped', () => {
     const p = party()
@@ -215,8 +191,7 @@ describe('alerts', () => {
     const { parties, events } = scenario()
     load(parties, events)
     mount()
-    click(screen.getByText('+1 more'))
-    click(screen.getByText('1 party need review'))
+    click(screen.getByText('1 party needs review'))
     expect(screen.getByText('REVIEW PAGE')).toBeTruthy()
   })
   it('shows no alert strip when all is well', () => {
@@ -283,83 +258,22 @@ describe('Entry tab', () => {
   })
 })
 
-describe('Dinner tab', () => {
-  it('splits served, checked in not served, and not yet arrived', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    mount()
-    click(tab('Dinner'))
-    expect(screen.getByRole('img', { name: '6 served, 2 checked in and not served, 2 not yet arrived' })).toBeTruthy()
-    const legend = document.querySelector('.st-card .lgd')!.textContent
-    expect(legend).toBe('Served 6Checked in, not served 2Not yet arrived 2')
-  })
-  it('counts dinner overrides, not the ones that were undone', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    mount()
-    click(tab('Dinner'))
-    expect(document.querySelector('.big-num')!.textContent).toBe('1')
-  })
-  it('shows four counters, quiet ones first, and all ten on request', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    mount()
-    click(tab('Dinner'))
-    expect(document.querySelectorAll('.crow')).toHaveLength(4)
-    const names = [...document.querySelectorAll('.crow .cl b')].map((b) => b.textContent)
-    // Counters 1 and 2 are quiet and busiest of the quiet; the active one follows by count.
-    expect(names.slice(0, 2)).toEqual(['Counter 1', 'Counter 2'])
-    click(screen.getByRole('button', { name: 'Show all 10 counters' }))
-    expect(document.querySelectorAll('.crow')).toHaveLength(10)
-    click(screen.getByRole('button', { name: 'Show fewer' }))
-    expect(document.querySelectorAll('.crow')).toHaveLength(4)
-  })
-  it('labels each counter as quiet, active or idle', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    mount()
-    click(tab('Dinner'))
-    click(screen.getByRole('button', { name: 'Show all 10 counters' }))
-    const row = (n: string) => screen.getByText(n, { selector: '.crow .cl b' }).closest('.crow')!.textContent!
-    expect(row('Counter 1')).toContain('Quiet 50 min')
-    expect(row('Counter 1')).toContain('Quiet')
-    expect(row('Counter 3')).toContain('Active')
-    expect(row('Counter 3')).toMatch(/0\.2\/min/)
-    expect(row('Counter 9')).toContain('No scans yet')
-    expect(row('Counter 9')).toContain('Idle')
-  })
-})
-
 describe('counters from the server', () => {
-  it('shows a renamed counter, and drops a retired one that nobody used', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    setCounters(BUILTIN_COUNTERS.map((c) => (c.code === 'DINNER-1' ? { ...c, label: 'Main hall' } : c.code === 'DINNER-9' ? { ...c, active: false } : c)))
-    mount()
-    click(tab('Dinner'))
-    click(screen.getByRole('button', { name: 'Show all 9 counters' }))
-    const names = [...document.querySelectorAll('.crow .cl b')].map((b) => b.textContent)
-    expect(names).toContain('Main hall')
-    expect(names).not.toContain('Counter 1')
-    expect(names).not.toContain('Counter 9')
-    expect(names).toHaveLength(9)
-  })
-  it('keeps a retired counter that already has scans, so the totals still add up', () => {
-    const { parties, events } = scenario()
-    load(parties, events)
-    setCounters(BUILTIN_COUNTERS.map((c) => (c.code === 'DINNER-3' ? { ...c, active: false } : c)))
-    mount()
-    click(tab('Dinner'))
-    click(screen.getByRole('button', { name: 'Show all 10 counters' }))
-    expect([...document.querySelectorAll('.crow .cl b')].map((b) => b.textContent)).toContain('Counter 3')
-  })
   it('shows only the gates the server lists', () => {
     const { parties, events } = scenario()
     load(parties, events)
-    setCounters(BUILTIN_COUNTERS.filter((c) => c.code !== 'GATE-2' && c.kind === 'gate' || c.kind === 'dinner').map((c) => (c.code === 'GATE-1' ? { ...c, label: 'Front gate' } : c)))
+    setCounters(BUILTIN_COUNTERS.filter((c) => c.code !== 'GATE-2').map((c) => (c.code === 'GATE-1' ? { ...c, label: 'Front gate' } : c)))
     mount()
     expect(screen.getByText('Front gate')).toBeTruthy()
     expect(screen.queryByText('Gate desk 2')).toBeNull()
+  })
+  it('keeps a retired gate that already has check-ins, so the totals still add up, and drops one nobody used', () => {
+    const { parties, events } = scenario()
+    load(parties, events)
+    setCounters([...BUILTIN_COUNTERS.map((c) => (c.code === 'GATE-2' ? { ...c, active: false } : c)), { code: 'GATE-3', label: 'Old gate', kind: 'gate' as const, active: false }])
+    mount()
+    expect(screen.getByText('Gate desk 2')).toBeTruthy()
+    expect(screen.queryByText('Old gate')).toBeNull()
   })
 })
 
@@ -437,7 +351,7 @@ describe('filtering', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText(/Filtered:/).textContent).toBe('Filtered: 2010')
     expect(screen.getByText('Partial numbers')).toBeTruthy()
-    expect(tiles()).toEqual(['5On campus now', '83%5 of 6 arrived', '6Meals served', '1 Review ›'])
+    expect(tiles()).toEqual(['5On campus now', '83%5 of 6 arrived', '1 Review ›'])
     expect(screen.getByRole('button', { name: /^Year · 1/ })).toBeTruthy()
   })
   it('does not apply anything when the sheet is closed without applying', () => {
@@ -524,21 +438,12 @@ describe('filtering', () => {
     })
     expect(screen.queryByRole('status')).toBeNull()
   })
-  it('narrows Dinner and Entry numbers to the filter too', () => {
+  it('narrows the Entry numbers to the filter too', () => {
     open()
     click(tab('Breakdown'))
     click(screen.getByRole('button', { name: '2015: 2 of 2 arrived' }))
-    click(tab('Dinner'))
-    expect(document.querySelector('.st-card .lgd')!.textContent).toBe('Served 0Checked in, not served 2Not yet arrived 0')
     click(tab('Entry'))
     expect(screen.getByRole('heading', { name: 'Arrived of 2 expected' })).toBeTruthy()
-  })
-  it('counts only the filtered parties\' overrides', () => {
-    open()
-    click(tab('Breakdown'))
-    click(screen.getByRole('button', { name: '2015: 2 of 2 arrived' }))
-    click(tab('Dinner'))
-    expect(document.querySelector('.big-num')!.textContent).toBe('0')
   })
 })
 
@@ -559,7 +464,6 @@ describe('compact header', () => {
     const mini = screen.getByRole('button', { name: 'Show all numbers' })
     expect(mini.textContent).toContain('7 here')
     expect(mini.textContent).toContain('70% of 10')
-    expect(mini.textContent).toContain('6 meals')
     scrollTo(60)
     expect(screen.queryByRole('button', { name: 'Show all numbers' })).not.toBeNull() // hysteresis: still compact above 24
     scrollTo(10)

@@ -13,7 +13,6 @@ export interface GuestRow {
   children: number
   parking: 'none' | 'two_wheeler' | 'four_wheeler'
   accommodation: 'no' | 'yes' | 'maybe' | null
-  dinnerOverride: number | null
 }
 
 /** One column of the template. The template, the checker and the on-screen guide all read this list. */
@@ -38,7 +37,6 @@ export const FIELDS: Field[] = [
   { header: 'Children', required: false, allowed: 'A whole number from 0 to ' + MAX_CHILDREN + '. Blank means 0.', example: '2' },
   { header: 'Parking', required: false, allowed: 'None, 2-wheeler or 4-wheeler. Blank means None.', example: '4-wheeler' },
   { header: 'Accommodation', required: false, allowed: 'Yes, No or Maybe, or blank.', example: 'No' },
-  { header: 'Dinner override', required: false, allowed: 'Leave blank unless this guest should get a different number of dinners than the party size (1 + spouse + children). A whole number from 0 to 30.', example: '' },
 ]
 
 export const MAX_ROWS = 10000
@@ -204,9 +202,6 @@ export function checkGuestFile(text: string): FileReport {
     const acc = accText ? YES_NO_MAYBE[squash(accText)] : null
     if (accText && !acc) errors.push('Accommodation must be Yes, No or Maybe, not “' + accText + '”.')
 
-    const ovrText = get(cells, 'Dinner override')
-    const ovr = ovrText === '' ? null : /^\d{1,2}$/.test(ovrText) ? Number(ovrText) : NaN
-    if (ovr !== null && !(ovr >= 0 && ovr <= 30)) errors.push('Dinner override must be blank or a whole number from 0 to 30, not “' + ovrText + '”.')
 
     if ('digits' in mob) {
       const before = firstSeen.get(mob.digits)
@@ -228,7 +223,6 @@ export function checkGuestFile(text: string): FileReport {
           children: kids,
           parking: parking!,
           accommodation: acc ?? null,
-          dinnerOverride: ovr,
         }
     return { line, name, errors, warnings, guest }
   })

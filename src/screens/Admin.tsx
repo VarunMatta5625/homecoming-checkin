@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { backend } from '../backend/index.ts'
 import type { AdminUser } from '../backend/types.ts'
-import { Alert, Banner, Btn, Chip, Empty, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
-import { counterLabel } from '../lib/counters.ts'
-import { fmtTime, initials, roleLabel } from '../lib/format.ts'
-import { useRoster } from '../lib/hooks.ts'
+import { Alert, Btn, Chip, Group, Icon, NavBar, Seg, Sheet, Switch } from '../components/ui.tsx'
+import { initials, roleLabel } from '../lib/format.ts'
 import { prefs } from '../lib/prefs.ts'
 import type { Role } from '../lib/types.ts'
 
@@ -68,6 +66,7 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
   const emailOk = /^\S+@\S+\.\S+$/.test(u.email.trim())
 
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const isMe = init.user.email.toLowerCase() === prefs.get().session?.email.toLowerCase()
 
   const save = async (next: AdminUser = u) => {
@@ -81,6 +80,16 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
     } catch (e) {
       setConfirmRemove(false)
       setError(e instanceof Error ? e.message : 'Couldn’t save. Check your signal and try again.')
+    }
+  }
+
+  const del = async () => {
+    try {
+      await backend.deleteUser(init.user.email)
+      onSaved()
+    } catch (e) {
+      setConfirmDelete(false)
+      setError(e instanceof Error ? e.message : 'Couldn’t delete. Check your signal and try again.')
     }
   }
 
@@ -99,11 +108,15 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
       <div className="px stack g2">
         <Btn disabled={!emailOk} onClick={() => void save()}>Save</Btn>
         {!init.isNew && u.active && !isMe && <Btn kind="destructive" onClick={() => setConfirmRemove(true)}>Remove from the list</Btn>}
+        {!init.isNew && !init.user.active && !isMe && init.user.canDelete && <Btn kind="destructive" onClick={() => setConfirmDelete(true)}>Delete permanently</Btn>}
       </div>
+      {!init.isNew && !init.user.active && !isMe && init.user.canDelete === false && (
+        <div className="gh-f">Scans or edits on record name this person, so they can only stay switched off. The records keep saying who did what.</div>
+      )}
       {confirmRemove && (
         <Alert
           title={'Remove ' + (init.user.name || init.user.email) + '?'}
-          body="They can no longer sign in, and any phone they are signed in on stops working. Their scans and edits stay in the records. You can switch them back on later."
+          body="They can no longer sign in. A phone they are signed in on signs out the next time it has signal (it asks first if scans are still unsent). Their scans and edits stay in the records. You can switch them back on later."
           onClose={() => setConfirmRemove(false)}
           actions={[
             { label: 'Cancel', onClick: () => setConfirmRemove(false) },
@@ -111,37 +124,17 @@ function EditUser({ init, all, onClose, onSaved }: { init: { user: AdminUser; is
           ]}
         />
       )}
-    </Sheet>
-  )
-}
-
-/** Shows the corrections and undos this phone knows about. User and guest edits are in the server audit log. */
-export function AuditScreen() {
-  const roster = useRoster()
-  const rows = useMemo(() => {
-    if (!roster) return []
-    return roster.events.filter((e) => e.action === 'void').sort((a, b) => b.clientAt - a.clientAt)
-  }, [roster])
-  return (
-    <Page title="Audit log">
-      <Banner kind="info" icon="info">Showing undos and corrections synced to this phone. User and guest edits appear here once the server audit feed is connected.</Banner>
-      <div style={{ height: 16 }} />
-      {rows.length === 0 ? (
-        <Empty icon="history" title="Nothing logged yet" body="Undos and staff corrections will show up here with who did them and why." />
-      ) : (
-        <div className="group">
-          {rows.map((e) => (
-            <div key={e.id} className="rrow vtop">
-              <div className="lead lead36" style={{ background: 'var(--warn-bg)', color: 'var(--warn-text)' }}><Icon name={e.method === 'staff' ? 'wrench' : 'undo'} size="m" /></div>
-              <div className="grow stack" style={{ gap: 2 }}>
-                <span className="nm" style={{ whiteSpace: 'normal' }}>{(e.method === 'staff' ? 'Reset ' : 'Undid ') + e.checkpoint + ' · ' + (roster?.byId.get(e.partyId)?.leadName ?? 'Unknown')}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>{fmtTime(e.clientAt)} · {e.actorName} · {counterLabel(e.counter)}</span>
-                <span className="meta" style={{ whiteSpace: 'normal' }}>Reason: {e.reason}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      {confirmDelete && (
+        <Alert
+          title={'Delete ' + (init.user.name || init.user.email) + ' for good?'}
+          body="They come off the list entirely. Nothing on record names them, so no scans or edits are affected. This can’t be undone, but you can add the email again later."
+          onClose={() => setConfirmDelete(false)}
+          actions={[
+            { label: 'Cancel', onClick: () => setConfirmDelete(false) },
+            { label: 'Delete', kind: 'danger', onClick: () => void del() },
+          ]}
+        />
       )}
-    </Page>
+    </Sheet>
   )
 }

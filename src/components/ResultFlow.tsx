@@ -2,48 +2,36 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UNDO_WINDOW_S } from '../lib/config.ts'
 import { counterLabel } from '../lib/counters.ts'
-import { ago, firstName, fmtTime, mmss, partyDesc, plural, vibrate } from '../lib/format.ts'
-import { checkIn, serveDinner, shortName } from '../lib/actions.ts'
+import { ago, firstName, fmtTime, partyDesc, plural, vibrate } from '../lib/format.ts'
+import { checkIn } from '../lib/actions.ts'
 import { usePartyView, useNow } from '../lib/hooks.ts'
 import { leaveLayers } from '../lib/layers.ts'
 import { prefs } from '../lib/prefs.ts'
 import { liveEvents } from '../lib/state.ts'
 import { ui } from '../lib/ui.ts'
-import { undoSecondsLeft } from '../lib/undo.ts'
-import { hasRole, type Method, type ScanEvent } from '../lib/types.ts'
-import { Btn, Chip, Kv, PartyCounter, ResultHead, Sheet, Stepper } from './ui.tsx'
-import { UndoSheet } from './UndoSheet.tsx'
+import type { Method } from '../lib/types.ts'
+import { Btn, Chip, Kv, ResultHead, Sheet, Stepper } from './ui.tsx'
 
 export type Flow = { kind: 'guest'; partyId: string; method: Method } | { kind: 'unrec' } | { kind: 'notfound'; code?: string }
 
-type Kind = 'valid' | 'nocheck' | 'served' | 'flagged' | 'done' | 'entry' | 'entryDone' | 'unrec' | 'notfound'
+type Kind = 'entry' | 'entryDone' | 'unrec' | 'notfound'
 
-const TITLES: Record<Kind, string> = { valid: 'Dinner', nocheck: 'Dinner', served: 'Dinner', flagged: 'Dinner', done: 'Done', entry: 'Entry', entryDone: 'Entry', unrec: 'Entry', notfound: 'Not found' }
-const BUZZ: Partial<Record<Kind, 'ok' | 'warn' | 'bad'>> = { valid: 'ok', entry: 'ok', entryDone: 'ok', nocheck: 'warn', flagged: 'warn', unrec: 'warn', served: 'bad' }
+const TITLES: Record<Kind, string> = { entry: 'Entry', entryDone: 'Entry', unrec: 'Entry', notfound: 'Not found' }
+const BUZZ: Partial<Record<Kind, 'ok' | 'warn' | 'bad'>> = { entry: 'ok', entryDone: 'ok', unrec: 'warn' }
 
 /** The scan result sheet. One Sheet instance for every state, so it never re-animates or re-pushes history. */
-export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; mode: 'entry' | 'dinner'; onClose: () => void; onEnterCode?: () => void }) {
+export function ResultFlow({ flow, onClose, onEnterCode }: { flow: Flow; onClose: () => void; onEnterCode?: () => void }) {
   const navigate = useNavigate()
   const { session, rosterAt } = prefs.use()
   const view = usePartyView(flow.kind === 'guest' ? flow.partyId : null)
-  const [userN, setUserN] = useState<number | null>(null)
   const [entryN, setEntryN] = useState<number | null>(null)
-  const [done, setDone] = useState<{ event: ScanEvent; qty: number } | null>(null)
-  const [undo, setUndo] = useState(false)
   const [busy, setBusy] = useState(false)
   const now = useNow(1000)
 
   let kind: Kind | null = null
   if (flow.kind === 'unrec') kind = 'unrec'
   else if (flow.kind === 'notfound' || view === null) kind = 'notfound'
-  else if (view) {
-    const s = view.state
-    if (done) kind = 'done'
-    else if (mode === 'entry') kind = s.entered ? 'entryDone' : 'entry'
-    else if (!s.entered) kind = 'nocheck'
-    else if (s.remaining <= 0) kind = s.overServed ? 'flagged' : 'served'
-    else kind = 'valid'
-  }
+  else if (view) kind = view.state.entered ? 'entryDone' : 'entry'
 
   useEffect(() => {
     const b = kind && BUZZ[kind]
@@ -53,30 +41,15 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
   if (!kind) return null
   const party = view?.party
   const state = view?.state
-  const n = state ? Math.min(userN ?? state.remaining, state.remaining) : 1
   const go = (to: string) => leaveLayers(() => navigate(to))
 
-  const doServe = async () => {
-    if (!party || !state || busy) return
-    setBusy(true)
-    try {
-      const event = await serveDinner(party.id, n, flow.kind === 'guest' ? flow.method : 'search')
-      ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Served ' + n + ' · ' + shortName(party.leadName), sub: state.served + n + ' of ' + state.entitled + ' served', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
-      setDone({ event, qty: n })
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const doCheckIn = async (qty: number) => {
-    if (!party || !state || busy) return
+    if (!party || busy) return
     setBusy(true)
     try {
       const event = await checkIn(party.id, qty, flow.kind === 'guest' ? flow.method : 'search')
-      if (mode === 'entry') {
-        ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Welcome back, ' + firstName(party.leadName) + '!', sub: (qty === party.partySize ? 'Party of ' + qty : plural(qty, 'person', 'people')) + ' checked in', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
-        onClose()
-      }
+      ui.set({ last: { eventId: event.id, partyId: party.id, title: 'Welcome back, ' + firstName(party.leadName) + '!', sub: (qty === party.partySize ? 'Party of ' + qty : plural(qty, 'person', 'people')) + ' checked in', until: event.clientAt + UNDO_WINDOW_S * 1000 } })
+      onClose()
     } finally {
       setBusy(false)
     }
@@ -95,121 +68,22 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
     </div>
   )
 
-  const live = view ? liveEvents(view.events).sort((a, b) => a.clientAt - b.clientAt) : []
-  const dinnerEvents = live.filter((e) => e.checkpoint === 'dinner')
-  const lastDinner = dinnerEvents[dinnerEvents.length - 1]
-  const entryEvent = live.find((e) => e.checkpoint === 'entry')
+  const entryEvent = view ? liveEvents(view.events).sort((a, b) => a.clientAt - b.clientAt)[0] : undefined
 
-  const details = party && kind !== 'done' && (
+  const details = party && (
     <button type="button" className="navbtn" onClick={() => go('/guest/' + party.id)}>
       Details
     </button>
   )
 
-  if (undo && done && party && state) {
-    return <UndoSheet event={done.event} who={party.leadName} detail={state.served + ' of ' + state.entitled + ' served'} onClose={() => setUndo(false)} onUndone={() => { ui.set({ last: null }); onClose() }} />
-  }
-
-  const left = done ? undoSecondsLeft(done.event, now) : 0
-  const canUndoDone = !!done && (hasRole(session, 'staff') || left > 0)
-
   return (
     <Sheet title={TITLES[kind]} onClose={onClose} action={details}>
-      {kind === 'valid' && party && state && (
-        <>
-          <ResultHead kind="ok" icon="check-circle" label="Valid" sub={'Dinner · checked in ' + (state.enteredAt ? fmtTime(state.enteredAt) : '')} />
-          {guest}
-          <div style={{ margin: '0 16px', padding: '14px 16px', borderRadius: 14, background: 'var(--fill2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <PartyCounter total={state.entitled} served={state.served} now={n} />
-            {party.spouse === 'maybe' && <span className="t-cap muted">A “Maybe” spouse is welcome. Serve them if they’re here.</span>}
-          </div>
-          <div className="px5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div className="stack">
-              <span className="t-head">Serve now</span>
-              <span className="t-sub muted">Up to {state.remaining}</span>
-            </div>
-            <Stepper value={n} min={1} max={state.remaining} onChange={setUserN} label="How many to serve now" />
-          </div>
-          <div className="px">
-            <Btn icon="utensils" onClick={doServe} disabled={busy}>Serve {n}</Btn>
-          </div>
-        </>
-      )}
-
-      {kind === 'nocheck' && party && state && (
-        <>
-          <ResultHead kind="warn" icon="alert" label="Check in first" sub="No entry scan for this party" />
-          {guest}
-          <p className="t-body px5" style={{ margin: 0 }}>
-            {firstName(party.leadName)}’s party wasn’t checked in at the gate. Check them in here, then serve. No need to scan again.
-          </p>
-          <div className="btns">
-            <Btn icon="login" onClick={() => doCheckIn(party.partySize)} disabled={busy}>Check in now</Btn>
-            <Btn kind="plain" onClick={onClose}>Not now</Btn>
-          </div>
-        </>
-      )}
-
-      {kind === 'served' && party && state && (
-        <>
-          <ResultHead kind="bad" icon="x-circle" label="Already served" sub={'All ' + state.entitled + ' meals for this party'} />
-          {guest}
-          <div className="group">
-            <Kv k="When" v={lastDinner ? fmtTime(lastDinner.clientAt) + ' · ' + ago(lastDinner.clientAt, now) : '—'} />
-            <Kv k="Where" v={lastDinner ? counterLabel(lastDinner.counter) : '—'} />
-            <Kv k="Served by" v={lastDinner?.actorName ?? '—'} />
-            <Kv k="Party" v={state.served + ' of ' + state.entitled + ' served'} />
-          </div>
-          <p className="t-sub muted px5" style={{ margin: 0 }}>If someone in the party missed their meal, ask a staff member to check.</p>
-          <div className="px">
-            <Btn icon="scan" onClick={onClose}>Scan next</Btn>
-          </div>
-        </>
-      )}
-
-      {kind === 'flagged' && party && state && (
-        <>
-          <ResultHead kind="warn" icon="flag" label="Heads-up" sub={'Flagged after sync · ' + plural(state.served - state.entitled, 'meal') + ' more than the party size'} />
-          {guest}
-          <div className="group">
-            {dinnerEvents.map((e) => (
-              <div key={e.id} className="kv">
-                <span>{fmtTime(e.clientAt)} · {counterLabel(e.counter)}</span>
-                <span style={{ textAlign: 'right' }}>{e.actorId === session?.actorId ? 'You' : e.actorName} · served {e.qty}</span>
-              </div>
-            ))}
-          </div>
-          <p className="t-sub muted px5" style={{ margin: 0 }}>More than one counter served this party. Staff have been told and will sort it out. Nothing to do here.</p>
-          <div className="px">
-            <Btn onClick={onClose}>OK</Btn>
-          </div>
-        </>
-      )}
-
-      {kind === 'done' && party && state && done && (
-        <>
-          <ResultHead kind="ok" icon="check-circle" label={'Served ' + done.qty} sub={'Enjoy dinner, ' + firstName(party.leadName) + '!'} />
-          {guest}
-          <div style={{ margin: '0 16px', padding: '14px 16px', borderRadius: 14, background: 'var(--fill2)' }}>
-            <PartyCounter total={state.entitled} served={state.served} done={state.served - done.qty} now={done.qty} />
-          </div>
-          <div className="btns">
-            <Btn icon="scan" onClick={onClose}>Scan next</Btn>
-            {canUndoDone && (
-              <Btn kind="plain" icon="undo" onClick={() => setUndo(true)}>
-                Undo{hasRole(session, 'staff') ? '' : ' · ' + mmss(left)}
-              </Btn>
-            )}
-          </div>
-        </>
-      )}
-
       {kind === 'entry' && party && state && (
         <>
           <ResultHead kind="ok" icon="check-circle" label="Valid" sub={party.spouse === 'maybe' ? 'Entry · allowed in' : 'Entry · welcome back to campus'} />
           {guest}
           <p className="t-sub muted px5" style={{ margin: 0 }}>
-            {party.spouse === 'maybe' ? 'A “Maybe” spouse is still welcome. Check in whoever is here now.' : 'Checks in everyone on this pass. Dinner opens for all ' + party.partySize + '.'}
+            {party.spouse === 'maybe' ? 'A “Maybe” spouse is still welcome. Check in whoever is here now.' : 'Checks in everyone on this pass.'}
           </p>
           {party.partySize > 1 && (
             <div className="px5" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -273,4 +147,3 @@ export function ResultFlow({ flow, mode, onClose, onEnterCode }: { flow: Flow; m
     </Sheet>
   )
 }
-
